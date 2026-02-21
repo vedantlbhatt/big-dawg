@@ -7,7 +7,7 @@ def fetch_markets(limit=10):
     params = {
         "active": True,
         "closed": False,
-        "limit": 100  # Fetch a larger pool for diversification
+        "limit": limit
     }
 
     response = requests.get(MARKETS_URL, params=params)
@@ -32,3 +32,16 @@ def fetch_markets(limit=10):
     df = df.sort_values("volume", ascending=False)
 
     return df
+
+def fetch_active_event_map(limit=200):
+    """
+    Fetches active markets and groups slugs by their parent event title.
+    Returns: { 'Event Title': [ 'slug1', 'slug2', ... ] }
+    """
+    df = fetch_markets(limit=limit)
+    if df.empty:
+        return {}
+    
+    # Group by event_title and collect slugs
+    event_map = df.groupby("event_title")["slug"].apply(list).to_dict()
+    return event_map

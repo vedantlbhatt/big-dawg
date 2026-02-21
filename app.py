@@ -59,6 +59,10 @@ with st.expander("🔍 Global Opportunity Scout", expanded=False):
 # -----------------------------
 # MARKET SELECTION
 # -----------------------------
+st.sidebar.header("Navigation")
+st.sidebar.page_link("app.py", label="Main Dashboard", icon="📊")
+st.sidebar.page_link("pages/wallet_intelligence.py", label="Wallet Intelligence", icon="🕵️‍♂️")
+st.sidebar.divider()
 st.sidebar.header("Market Configuration")
 
 # Market search/selection in the sidebar

@@ -3,8 +3,9 @@ import pandas as pd
 
 GAMMA_URL = "https://gamma-api.polymarket.com/markets"
 TRADES_URL = "https://data-api.polymarket.com/trades"
+DATA_API_BASE = "https://data-api.polymarket.com"
 
-def fetch_trades(market_slug_or_id):
+def fetch_trades(market_slug_or_id, max_trades=10000):
     """
     Fetches historical trade data for a specific market slug or ID.
     """
@@ -60,8 +61,8 @@ def fetch_trades(market_slug_or_id):
         else:
             params["end"] = earliest_ts
         
-        # Stop at a reasonable limit for this specific demo/app (e.g. 10000 trades)
-        if len(all_trades) >= 10000:
+        # Stop at requested limit
+        if len(all_trades) >= max_trades:
             break
 
     if not all_trades:
@@ -85,4 +86,28 @@ def fetch_trades(market_slug_or_id):
     # Ensure it's sorted chronologically for the app
     df = df.sort_values("timestamp")
     return df
+
+def fetch_user_activity(address):
+    """Fetches on-chain activity for a user (deposits, withdrawals, fills)."""
+    url = f"{DATA_API_BASE}/activity"
+    response = requests.get(url, params={"user": address})
+    return response.json() if response.status_code == 200 else []
+
+def fetch_user_trades(address):
+    """Fetches full trade history for a specific user address."""
+    url = f"{DATA_API_BASE}/trades"
+    response = requests.get(url, params={"user": address})
+    if response.status_code == 200:
+        trades = response.json()
+        return pd.DataFrame(trades)
+    return pd.DataFrame()
+
+def fetch_user_positions(address):
+    """Fetches current open positions for a specific user address."""
+    url = f"{DATA_API_BASE}/positions"
+    response = requests.get(url, params={"user": address})
+    if response.status_code == 200:
+        positions = response.json()
+        return pd.DataFrame(positions)
+    return pd.DataFrame()
 
