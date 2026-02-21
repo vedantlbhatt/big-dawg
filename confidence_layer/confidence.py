@@ -1,2 +1,2 @@
-def confidence_metrics(trades_df, price_series):
-    return {"confidence_level": "High", "data_quality": 1.0}
+# Re-export so app can use: from confidence_layer.confidence import confidence_metrics
+from confidence_layer.confidence_layer import confidence_metrics
