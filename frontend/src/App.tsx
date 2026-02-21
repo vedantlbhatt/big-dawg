@@ -43,24 +43,34 @@ function PriceChartSVG({ priceSeries, currentPct }: { priceSeries: { timestamp: 
   const padding = { left: 38, right: 22, top: 20, bottom: 20 }
   const plotH = h - padding.top - padding.bottom
   const plotW = w - padding.left - padding.right
-  let areaPath = 'M38,130 C70,122 90,112 120,100 C150,88 165,115 196,97 C226,80 238,110 268,95 C296,82 315,62 348,55 C378,49 398,74 430,65 C460,57 480,43 512,37 C535,32 550,50 578,43 L578,160 L38,160 Z'
-  let linePath = 'M38,130 C70,122 90,112 120,100 C150,88 165,115 196,97 C226,80 238,110 268,95 C296,82 315,62 348,55 C378,49 398,74 430,65 C460,57 480,43 512,37 C535,32 550,50 578,43'
-  let lastX = 578
-  let lastY = 43
+
+  let minP = 0
+  let maxP = 100
+
   if (priceSeries.length >= 2) {
-    const minP = Math.min(...priceSeries.map((d) => d.price))
-    const maxP = Math.max(...priceSeries.map((d) => d.price))
-    const range = maxP - minP || 1
-    const pts = priceSeries.map((d, i) => {
-      const x = padding.left + (i / (priceSeries.length - 1)) * plotW
-      const y = padding.top + (1 - (d.price - minP) / range) * plotH
-      return { x, y }
-    })
-    linePath = pts.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ')
-    areaPath = linePath + ` L${pts[pts.length - 1].x},${h} L${pts[0].x},${h} Z`
-    lastX = pts[pts.length - 1].x
-    lastY = pts[pts.length - 1].y
+    const rawMin = Math.min(...priceSeries.map((d) => d.price))
+    const rawMax = Math.max(...priceSeries.map((d) => d.price))
+    const buffer = (rawMax - rawMin) * 0.1 || 0.05
+    minP = Math.max(0, rawMin - buffer)
+    maxP = Math.min(1, rawMax + buffer)
   }
+
+  const range = maxP - minP || 1
+  const pts = priceSeries.length >= 2
+    ? priceSeries.map((d, i) => ({
+      x: padding.left + (i / (priceSeries.length - 1)) * plotW,
+      y: padding.top + (1 - (d.price - minP) / range) * plotH
+    }))
+    : []
+
+  const linePath = pts.length >= 2 ? pts.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ') : ''
+  const areaPath = pts.length >= 2 ? linePath + ` L${pts[pts.length - 1].x},${h} L${pts[0].x},${h} Z` : ''
+  const lastX = pts.length >= 2 ? pts[pts.length - 1].x : padding.left
+  const lastY = pts.length >= 2 ? pts[pts.length - 1].y : h / 2
+
+  // Dynamic Ticks
+  const ticks = [maxP, maxP - (range * 0.33), maxP - (range * 0.66), minP]
+
   return (
     <svg className="price-svg" viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none">
       <defs>
@@ -70,24 +80,30 @@ function PriceChartSVG({ priceSeries, currentPct }: { priceSeries: { timestamp: 
         </linearGradient>
       </defs>
       <g className="c-grid">
-        <line x1="0" y1="25" x2="600" y2="25" /><line x1="0" y1="65" x2="600" y2="65" />
-        <line x1="0" y1="105" x2="600" y2="105" /><line x1="0" y1="145" x2="600" y2="145" />
+        {ticks.map((_, i) => (
+          <line key={i} x1="0" y1={padding.top + (i / 3) * plotH} x2="600" y2={padding.top + (i / 3) * plotH} />
+        ))}
       </g>
       <g className="c-axis">
-        <text x="2" y="23">80%</text><text x="2" y="63">70%</text>
-        <text x="2" y="103">60%</text><text x="2" y="143">50%</text>
+        {ticks.map((t, i) => (
+          <text key={i} x="2" y={padding.top + (i / 3) * plotH + 3}>{Math.round(t * 100)}%</text>
+        ))}
       </g>
       <g className="c-axis">
-        <text x="38" y="158">00:00</text><text x="168" y="158">06:00</text>
-        <text x="295" y="158">12:00</text><text x="428" y="158">18:00</text>
+        <text x="38" y="158">Start</text>
+        <text x="295" y="158">Mid</text>
         <text x="552" y="158">Now</text>
       </g>
-      <path className="c-area" d={areaPath} />
-      <path className="c-line" d={linePath} />
-      <circle cx={lastX} cy={lastY} r="4" fill="#b9f751" />
-      <circle cx={lastX} cy={lastY} r="9" fill="#b9f751" opacity={0.14} />
-      <rect x={lastX + 4} y={lastY - 10} width="32" height="15" rx="4" fill="rgba(185,247,81,.14)" stroke="rgba(185,247,81,.3)" strokeWidth={0.5} />
-      <text x={lastX + 20} y={lastY - 0.5} textAnchor="middle" fontSize="8" fill="#b9f751" fontFamily="Figtree" fontWeight="700">{currentPct}%</text>
+      {pts.length >= 2 && (
+        <>
+          <path className="c-area" d={areaPath} />
+          <path className="c-line" d={linePath} />
+          <circle cx={lastX} cy={lastY} r="4" fill="#b9f751" />
+          <circle cx={lastX} cy={lastY} r="9" fill="#b9f751" opacity={0.14} />
+          <rect x={lastX + 4} y={lastY - 10} width="32" height="15" rx="4" fill="rgba(185,247,81,.14)" stroke="rgba(185,247,81,.3)" strokeWidth={0.5} />
+          <text x={lastX + 20} y={lastY - 0.5} textAnchor="middle" fontSize="8" fill="#b9f751" fontFamily="Figtree" fontWeight="700">{currentPct}%</text>
+        </>
+      )}
     </svg>
   )
 }
@@ -100,6 +116,7 @@ function App() {
   const [apiMarkets, setApiMarkets] = useState<Market[]>([])
   const [marketsLoading, setMarketsLoading] = useState(false)
   const [marketsError, setMarketsError] = useState<string | null>(null)
+  const [stats, setStats] = useState<{ volume_tracked: string; live_markets: number; avg_analysis_time: string } | null>(null)
   const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null)
   const [analyzing, setAnalyzing] = useState(false)
   const [analysisError, setAnalysisError] = useState<string | null>(null)
@@ -108,6 +125,15 @@ function App() {
   const [chatMessages, setChatMessages] = useState<{ role: 'user' | 'bot'; text: string }[]>([])
   const [chatInput, setChatInput] = useState('')
   const replyIdx = useRef(0)
+
+  // Fetch global stats on mount
+  useEffect(() => {
+    if (!API_BASE) return
+    fetch(`${API_BASE}/api/stats`)
+      .then((res) => res.json())
+      .then((data) => setStats(data))
+      .catch(() => setStats(null))
+  }, [API_BASE])
 
   useEffect(() => {
     if (!API_BASE || page !== 'markets') return
@@ -235,11 +261,11 @@ function App() {
         <div className="land-sub">Big-Dawg reads the signal behind every prediction market — so you know when to bet, and when to walk.</div>
         <button type="button" className="land-cta" onClick={enterApp}>Browse Markets →</button>
         <div className="land-stats">
-          <div className="lstat"><div className="lstat-val">$2.4B</div><div className="lstat-lab">Volume Tracked</div></div>
+          <div className="lstat"><div className="lstat-val">{stats?.volume_tracked ?? '$2.4B'}</div><div className="lstat-lab">Volume Tracked</div></div>
           <div style={{ width: 1, background: 'var(--border2)' }} />
-          <div className="lstat"><div className="lstat-val">1,247</div><div className="lstat-lab">Live Markets</div></div>
+          <div className="lstat"><div className="lstat-val">{stats?.live_markets ?? '1,247'}</div><div className="lstat-lab">Live Markets</div></div>
           <div style={{ width: 1, background: 'var(--border2)' }} />
-          <div className="lstat"><div className="lstat-val">98ms</div><div className="lstat-lab">Avg Analysis</div></div>
+          <div className="lstat"><div className="lstat-val">{stats?.avg_analysis_time ?? '98ms'}</div><div className="lstat-lab">Avg Analysis</div></div>
         </div>
       </div>
 
@@ -268,28 +294,41 @@ function App() {
         <div className="bets-grid" style={{ padding: '0 28px 60px' }} id="marketsGrid">
           {apiMarkets.length > 0
             ? apiMarkets.map((m) => (
-                <div
-                  key={m.conditionId + m.slug}
-                  className="bet-card"
-                  onClick={() => handleAnalyzeMarket(m)}
-                  role="button"
-                  tabIndex={0}
-                  onKeyDown={(ev) => ev.key === 'Enter' && handleAnalyzeMarket(m)}
-                >
-                  <div className="bet-card-top">
-                    <div className="bet-card-title">
-                      <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '.07em', display: 'block', marginBottom: 4 }}>{m.event_title}</span>
-                      {m.question}
+              <div
+                key={m.conditionId + m.slug}
+                className="bet-card"
+                onClick={() => handleAnalyzeMarket(m)}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(ev) => ev.key === 'Enter' && handleAnalyzeMarket(m)}
+              >
+                <div className="bet-card-top">
+                  <div className="bet-card-title">
+                    <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '.07em', display: 'block', marginBottom: 4 }}>{m.event_title}</span>
+                    {m.question}
+                  </div>
+                  {m.trust_score != null && (
+                    <div className="trust-mini">
+                      <div className={`tmini-num ${trustClass(m.trust_score)}`}>{m.trust_score}</div>
+                      <div className={`tmini-lbl ${trustClass(m.trust_score)}`}>{trustClass(m.trust_score) === 'trust' ? 'Trusted' : trustClass(m.trust_score) === 'caution' ? 'Caution' : 'Risky'}</div>
                     </div>
-                  </div>
-                  <div className="bet-foot">
-                    <span>Vol ${typeof m.volume === 'number' ? m.volume.toLocaleString(undefined, { maximumFractionDigits: 0 }) : m.volume}</span>
-                    <span className="ev-arrow">→</span>
-                  </div>
+                  )}
                 </div>
-              ))
+                <div className="bet-foot">
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span>Vol ${typeof m.volume === 'number' ? m.volume.toLocaleString(undefined, { maximumFractionDigits: 0 }) : m.volume}</span>
+                  </div>
+                  {m.classification && (
+                    <div className="smart-lean-chip" style={{ background: m.classification.includes('Whale') ? 'var(--purple-dim)' : m.classification.includes('Informed') ? 'var(--lime-dim)' : 'var(--blue-dim)', color: m.classification.includes('Whale') ? 'var(--purple)' : m.classification.includes('Informed') ? 'var(--lime)' : 'var(--blue)' }}>
+                      🧠 {m.classification.split(' ').pop()}
+                    </div>
+                  )}
+                  <span className="ev-arrow">→</span>
+                </div>
+              </div>
+            ))
             : !API_BASE
-            ? allMarkets.map(({ bet: b, event: e }) => (
+              ? allMarkets.map(({ bet: b, event: e }) => (
                 <div
                   key={b.id}
                   className="bet-card"
@@ -341,7 +380,7 @@ function App() {
                   </div>
                 </div>
               ))
-            : null}
+              : null}
         </div>
       </div>
 
@@ -578,9 +617,9 @@ function App() {
                   <div className="chat-card">
                     <div className="chat-header">
                       <div className="chat-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <img src="/reddog.png" alt="" style={{ width: 20, height: 20, objectFit: 'contain', borderRadius: 4 }} />
-                      Ask Big-Dawg
-                    </div>
+                        <img src="/reddog.png" alt="" style={{ width: 20, height: 20, objectFit: 'contain', borderRadius: 4 }} />
+                        Ask Big-Dawg
+                      </div>
                       <div className="ai-tag">AI</div>
                     </div>
                     <div className="chat-tip" id="chatTip" dangerouslySetInnerHTML={{ __html: tipHtml }} />
