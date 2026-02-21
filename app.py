@@ -1,3 +1,7 @@
+import os
+from dotenv import load_dotenv
+load_dotenv()
+
 import streamlit as st
 import pandas as pd
 
@@ -7,6 +11,7 @@ from utils.fetch_data import fetch_trades
 from integrity_engine.integrity_score import integrity_score
 from information_engine.information import classify_market_behavior
 from confidence_layer.confidence import confidence_metrics
+from utils.gemini_chat import chat_with_stats
 
 st.set_page_config(page_title="SignalLayer | Polymarket Intelligence", layout="wide")
 
@@ -76,108 +81,106 @@ st.session_state.setdefault("last_trades_df", None)
 # Session state: remember which market we last fetched so we refetch when selection changes
 st.session_state.setdefault("last_fetch_target", None)
 st.session_state.setdefault("last_trades_df", None)
+# Persist analysis so dashboard + chat stay visible after rerun (e.g. after sending a chat message)
+st.session_state.setdefault("analysis_result", None)
 
 # -----------------------------
 # FETCH & AGGREGATE DATA
 # -----------------------------
 if st.sidebar.button("Analyze Market", use_container_width=True):
     all_trades = []
-    
     with st.spinner(f"Extracting signals for {fetch_targets[0]}..."):
         for target in fetch_targets:
             df = fetch_trades(target)
             if not df.empty:
                 all_trades.append(df)
-        
         if all_trades:
             trades_df = pd.concat(all_trades).drop_duplicates(subset=["tx_id"]).sort_values("timestamp")
-            
-            # Persist data to CSVs
             save_data(trades_df)
-            
-            # Note: For multi-slug, price series might be noisy if prices differ wildly, 
-            # but usually for the same event they are related (e.g. YES/NO)
             price_series = trades_df.set_index("timestamp")["price"].resample("5min").last().ffill()
-            
-            # --- DASHBOARD LAYOUT ---
-            st.divider()
-            st.subheader(f"Analyzed Market: {selected_market_name if not market_search else market_search}")
-            
-            # Top Metrics Row
-            m1, m2, m3 = st.columns(3)
-            
-            # Integrity Engine Output
             wallet_summary = trades_df.groupby("wallet").agg(
                 total_volume=("size", "sum"),
                 total_trades=("size", "count"),
             ).reset_index()
             integrity_res = integrity_score(wallet_summary, trades_df)
-            
-            with m1:
-                st.markdown('<div class="metric-card">', unsafe_allow_html=True)
-                st.write("**INTEGRITY STATUS**")
-                status_emoji = "🟢" if integrity_res["status"] == "Clean" else "🔴"
-                st.subheader(f"{status_emoji} {integrity_res['status']}")
-                st.markdown('</div>', unsafe_allow_html=True)
-            
-            # Information Equality Engine Output
             info_res = classify_market_behavior(trades_df, price_series)
-            with m2:
-                st.markdown('<div class="metric-card">', unsafe_allow_html=True)
-                st.write("**MARKET SENTIMENT**")
-                st.subheader(f"{info_res['classification']}")
-                st.markdown('</div>', unsafe_allow_html=True)
-                
-            # Confidence Layer Output
             conf_res = confidence_metrics(trades_df, price_series)
-            with m3:
-                st.markdown('<div class="metric-card">', unsafe_allow_html=True)
-                st.write("**CONFIDENCE SCORE**")
-                st.subheader(f"📊 {int(conf_res['data_quality'] * 100)}% ({conf_res['confidence_level']})")
-                st.markdown('</div>', unsafe_allow_html=True)
+            st.session_state.analysis_result = {
+                "trades_df": trades_df,
+                "price_series": price_series,
+                "wallet_summary": wallet_summary,
+                "integrity_res": integrity_res,
+                "info_res": info_res,
+                "conf_res": conf_res,
+                "market_name": selected_market_name if not market_search else market_search,
+            }
+            st.session_state.messages = []
+            st.rerun()
+        else:
+            st.sidebar.warning("No trade data found for any of the selected markets.")
 
-            st.write("---")
-            
-            # Main Content Area
-            col_main, col_chat = st.columns([1.5, 1])
-            
-            with col_main:
-                st.subheader("Price & Volume Activity (Aggregated)")
-                st.line_chart(trades_df.set_index("timestamp")["price"], height=400)
-                
-                with st.expander("View Raw Trade Data"):
-                    st.dataframe(trades_df.head(100), use_container_width=True)
+# Show dashboard + chat whenever we have a persisted analysis (so chat survives reruns)
+if st.session_state.analysis_result is not None:
+    ar = st.session_state.analysis_result
+    trades_df = ar["trades_df"]
+    price_series = ar["price_series"]
+    integrity_res = ar["integrity_res"]
+    info_res = ar["info_res"]
+    conf_res = ar["conf_res"]
+    market_name = ar["market_name"]
 
-            with col_chat:
-                st.subheader("Intelligence Chat")
-                
-                if "messages" not in st.session_state:
-                    st.session_state.messages = []
+    st.divider()
+    st.subheader(f"Analyzed Market: {market_name}")
 
-                if not st.session_state.messages:
-                    greeting = f"""I've extracted signals for the market: **{selected_market_name if not market_search else market_search}**
+    m1, m2, m3 = st.columns(3)
+    with m1:
+        st.markdown('<div class="metric-card">', unsafe_allow_html=True)
+        st.write("**INTEGRITY STATUS**")
+        st.subheader(integrity_res["status"])
+        st.markdown('</div>', unsafe_allow_html=True)
+    with m2:
+        st.markdown('<div class="metric-card">', unsafe_allow_html=True)
+        st.write("**MARKET SENTIMENT**")
+        st.subheader(f"{info_res['classification']}")
+        st.markdown('</div>', unsafe_allow_html=True)
+    with m3:
+        st.markdown('<div class="metric-card">', unsafe_allow_html=True)
+        st.write("**CONFIDENCE SCORE**")
+        st.subheader(f"📊 {int(conf_res['data_quality'] * 100)}% ({conf_res['confidence_level']})")
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    st.write("---")
+    col_main, col_chat = st.columns([1.5, 1])
+
+    with col_main:
+        st.subheader("Price & Volume Activity (Aggregated)")
+        st.line_chart(trades_df.set_index("timestamp")["price"], height=400)
+        with st.expander("View Raw Trade Data"):
+            st.dataframe(trades_df.head(100), use_container_width=True)
+
+    with col_chat:
+        st.subheader("Intelligence Chat")
+        if "messages" not in st.session_state:
+            st.session_state.messages = []
+        if not st.session_state.messages:
+            greeting = f"""I've extracted signals for the market: **{market_name}**
 - The Integrity Scan shows it's **{integrity_res['status']}**.
 - Overall sentiment is **{info_res['classification']}**.
 - Confidence is **{conf_res['confidence_level']}**.
 
 How can I help you interpret this market data?"""
-                    st.session_state.messages.append({"role": "assistant", "content": greeting})
+            st.session_state.messages.append({"role": "assistant", "content": greeting})
 
-                for msg in st.session_state.messages:
-                    role_class = "bot-bubble" if msg["role"] == "assistant" else "user-bubble"
-                    st.markdown(f'<div class="chat-bubble {role_class}">{msg["content"]}</div>', unsafe_allow_html=True)
+        for msg in st.session_state.messages:
+            role_class = "bot-bubble" if msg["role"] == "assistant" else "user-bubble"
+            st.markdown(f'<div class="chat-bubble {role_class}">{msg["content"]}</div>', unsafe_allow_html=True)
 
-                if prompt := st.chat_input("Ask a question..."):
-                    st.session_state.messages.append({"role": "human", "content": prompt})
-                    response = "Analysing market data... "
-                    if "manipulation" in prompt.lower() or "whale" in prompt.lower():
-                        response += f"The integrity status for this market is {integrity_res['status'].lower()}."
-                    elif "sentiment" in prompt.lower():
-                        response += f"The market movement indicates {info_res['classification']}."
-                    else:
-                        response += "The signal remains stable for this market."
-                    
-                    st.session_state.messages.append({"role": "assistant", "content": response})
-                    st.rerun()
-        else:
-            st.sidebar.warning("No trade data found for any of the selected markets.")
+        if prompt := st.chat_input("Ask a question..."):
+            st.session_state.messages.append({"role": "human", "content": prompt})
+            response = chat_with_stats(
+                integrity_res, info_res, conf_res,
+                prompt,
+                history=st.session_state.messages[:-1],
+            )
+            st.session_state.messages.append({"role": "assistant", "content": response})
+            st.rerun()
