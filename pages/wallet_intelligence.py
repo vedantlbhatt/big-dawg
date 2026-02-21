@@ -3,12 +3,13 @@ import pandas as pd
 import os
 import altair as alt
 from utils.fetch_data import fetch_trades, fetch_user_trades, fetch_user_positions, fetch_user_activity
-from utils.data_loader import load_wallets, init_scout_db
+from utils.data_loader import load_wallets, init_scout_db, get_wallet_analysis
 from utils.market_loader import fetch_active_event_map
+from utils.logic_engine import master_logic_engine
 
 st.set_page_config(page_title="Event Intelligence | SignalLayer", layout="wide")
 
-# Ensure DB is initialized (for other components)
+# Ensure DB is initialized
 init_scout_db()
 
 # -----------------------------
@@ -19,7 +20,7 @@ if os.path.exists("style.css"):
         st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
 
 st.title("🕵️‍♂️ Wallet Intelligence: Event View")
-st.markdown("### Analyzing 'Star' Sentiment across live events")
+st.markdown("### Analyzing 'Star' Sentiment with Master Logic Engine")
 
 # -----------------------------
 # LOGIC: LIVE EVENT DATA
@@ -48,39 +49,29 @@ def analyze_event_sentiment(event_title, slugs):
             if trades_df.empty:
                 continue
                 
-            # 2. Process wallet summary
-            wallet_summary = trades_df.groupby("wallet").agg(
-                total_volume=("size", "sum"),
-                total_trades=("size", "count"),
-            ).reset_index()
+            # 2. Extract price series for engines
+            price_series = trades_df.set_index("timestamp")["price"].resample("5min").last().ffill()
             
-            # Simple net position calculation
-            # This is a simplified version of the logic in data_loader.py
-            trades_df['pos_multiplier'] = trades_df['side'].map({'BUY': 1, 'SELL': -1}).fillna(0)
-            net_positions = trades_df.groupby("wallet").apply(lambda x: (x['size'] * x['pos_multiplier']).sum(), include_groups=False).reset_index(name="net_position")
+            # 3. Call Master Logic Engine
+            # This handles wallet analysis, integrity, and information in one go
+            master_res = master_logic_engine(trades_df, price_series)
             
-            # Avg Entry: Sum(price * size) / Sum(size) for BUYS only
-            buys = trades_df[trades_df['side'] == 'BUY']
-            avg_entries = buys.groupby("wallet").apply(lambda x: (x['price'] * x['size']).sum() / x['size'].sum(), include_groups=False).reset_index(name="avg_entry_price")
+            # Aggregate star sentiment values
+            # (In a real scenario, we might want to sum cost_basis for YES vs NO)
+            # The master_res contains details about stars.
             
-            wallet_summary = wallet_summary.merge(net_positions, on="wallet", how="left")
-            wallet_summary = wallet_summary.merge(avg_entries, on="wallet", how="left").fillna(0)
-            
-            # Simple ROI calculation for star identification
-            latest_price = trades_df["price"].iloc[-1]
-            wallet_summary["profit_estimate"] = (latest_price - wallet_summary["avg_entry_price"]) * wallet_summary["net_position"]
-            wallet_summary["cost_basis"] = wallet_summary["net_position"].abs() * wallet_summary["avg_entry_price"]
-            wallet_summary["roi"] = (wallet_summary["profit_estimate"] / wallet_summary["cost_basis"]).fillna(0)
-            
-            # 3. Aggregate "Star" sentiment (ROI >= 15%)
-            stars = wallet_summary[(wallet_summary["roi"] >= 0.15) & (wallet_summary["cost_basis"] > 10)]
+            # Re-fetch wallet results specifically for sentiment split
+            wallets = get_wallet_analysis(trades_df)
+            stars = wallets[(wallets["roi"] >= 0.15) & (wallets["cost_basis"] > 10)]
             yes_val = stars[stars["net_position"] > 0]["cost_basis"].sum()
             no_val = stars[stars["net_position"] < 0]["cost_basis"].sum()
             
             event_data.append({
                 "slug": slug,
                 "YES": float(yes_val),
-                "NO": float(no_val)
+                "NO": float(no_val),
+                "score": master_res["overall_score"],
+                "verdict": master_res["verdict"]
             })
         status.update(label="Event Analysis Complete", state="complete")
         
@@ -97,17 +88,21 @@ event_options = sorted(list(event_map.keys()))
 selected_event = st.selectbox("Select an Active Event to Analyze:", options=event_options)
 
 if selected_event:
-    slugs = event_map[selected_event]
-    sentiment_data = analyze_event_sentiment(selected_event, slugs)
+    sentiment_data = analyze_event_sentiment(selected_event, event_map[selected_event])
     
     if not sentiment_data.empty:
-        st.subheader(f"📊 Star Sentiment for: {selected_event}")
+        st.subheader(f"📊 Live Signal Table: {selected_event}")
         
+        # Display as a table with the overall score first
+        display_res = sentiment_data[["slug", "score", "verdict", "YES", "NO"]].copy()
+        display_res["score"] = display_res["score"].apply(lambda x: f"{int(x*100)}%")
+        st.dataframe(display_res, use_container_width=True, hide_index=True)
+        
+        st.write("#### Sentiment Visualization")
         # Reshape for Altair
         plot_df = sentiment_data.melt(id_vars=["slug"], value_vars=["YES", "NO"], 
                                      var_name="Position", value_name="Capital Value")
         
-        # Horizontal Grouped Bar Chart
         chart = alt.Chart(plot_df).mark_bar().encode(
             y=alt.Y("slug:N", title="Market Slug", sort="-x"),
             x=alt.X("Capital Value:Q", title="Aggregate Star Value ($)"),

@@ -3,10 +3,58 @@ import numpy as np
 import os
 import sqlite3
 
+def get_wallet_analysis(trades_df):
+    """
+    Analyzes trades to produce a summary of wallet activity, profit estimates, and ROI.
+    """
+    if trades_df.empty:
+        return pd.DataFrame()
+
+    summary = []
+    # Latest price for profit estimation
+    latest_price = trades_df['price'].iloc[-1]
+    
+    for wallet, group in trades_df.groupby("wallet"):
+        # Polymarket side is BUY/SELL
+        # We treat BUY as + and SELL as -
+        group['pos_multiplier'] = group['side'].map({'BUY': 1, 'SELL': -1}).fillna(0)
+        net_position = (group['size'] * group['pos_multiplier']).sum()
+        
+        total_volume = group['size'].sum()
+        total_trades = len(group)
+        
+        # Avg Entry: Sum(price * size) / Sum(size) for BUYS only
+        buys = group[group['side'] == 'BUY']
+        avg_entry_price = (buys['price'] * buys['size']).sum() / buys['size'].sum() if not buys.empty else 0
+        
+        # Profit Estimate: (Latest Price - Avg Entry) * Net Position
+        profit_estimate = (latest_price - avg_entry_price) * net_position if net_position != 0 else 0
+        
+        # Cost Basis: abs(net_position) * avg_entry_price
+        cost_basis = abs(net_position) * avg_entry_price
+        
+        # ROI
+        roi = profit_estimate / cost_basis if cost_basis > 0 else 0
+        
+        summary.append({
+            "wallet": wallet,
+            "total_volume": total_volume,
+            "total_trades": total_trades,
+            "first_trade_ts": group['timestamp'].min(),
+            "last_trade_ts": group['timestamp'].max(),
+            "net_position": net_position,
+            "avg_entry_price": avg_entry_price,
+            "profit_estimate": profit_estimate,
+            "cost_basis": cost_basis,
+            "roi": roi
+        })
+        
+    return pd.DataFrame(summary)
+
 def save_data(trades_df):
     """
     Orchestrates the processing and saving of Polymarket trade data 
-    into three structured CSV files.
+    into structured parquet files.
     """
     if not os.path.exists("data"):
         os.makedirs("data")
@@ -19,7 +67,6 @@ def save_data(trades_df):
     trades_out.to_parquet(trades_path, index=False)
     
     # 2. Generate price_series.parquet (5-minute buckets)
-    # We use size as volume
     prices_path = "data/price_series.parquet"
     if not trades_df.empty:
         df_p = trades_df.set_index("timestamp")
@@ -31,43 +78,9 @@ def save_data(trades_df):
         ohlcv.index.name = "timestamp"
         ohlcv.reset_index().to_parquet(prices_path, index=False)
     
-    # 3. Generate wallet_summary.csv
-    wallets_path = "data/wallet_summary.csv"
-    if not trades_df.empty:
-        summary = []
-        for wallet, group in trades_df.groupby("wallet"):
-            # Simple net position: BUY adds, SELL subtracts
-            # Note: This assumes we are looking at one outcome at a time or 
-            # aggregating for the "YES" side. For complex logic, we'd filter.
-            
-            # Polymarket side is BUY/SELL
-            # We treat BUY as + and SELL as -
-            group['pos_multiplier'] = group['side'].map({'BUY': 1, 'SELL': -1}).fillna(0)
-            net_position = (group['size'] * group['pos_multiplier']).sum()
-            
-            total_volume = group['size'].sum()
-            total_trades = len(group)
-            
-            # Avg Entry: Sum(price * size) / Sum(size) for BUYS only
-            buys = group[group['side'] == 'BUY']
-            avg_entry_price = (buys['price'] * buys['size']).sum() / buys['size'].sum() if not buys.empty else 0
-            
-            # Profit Estimate: (Latest Price - Avg Entry) * Net Position
-            latest_price = trades_df['price'].iloc[-1]
-            profit_estimate = (latest_price - avg_entry_price) * net_position if net_position != 0 else 0
-            
-            summary.append({
-                "wallet": wallet,
-                "total_volume": total_volume,
-                "total_trades": total_trades,
-                "first_trade_ts": group['timestamp'].min(),
-                "last_trade_ts": group['timestamp'].max(),
-                "net_position": net_position,
-                "avg_entry_price": avg_entry_price,
-                "profit_estimate": profit_estimate
-            })
-            
-        wallet_df = pd.DataFrame(summary)
+    # 3. Generate wallet_summary.parquet
+    wallet_df = get_wallet_analysis(trades_df)
+    if not wallet_df.empty:
         wallet_df.to_parquet("data/wallet_summary.parquet", index=False)
 
 def init_scout_db():
