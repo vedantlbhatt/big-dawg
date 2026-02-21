@@ -37,12 +37,45 @@ export interface ConfidenceResult {
   conviction_score?: number
 }
 
+export interface WalletIntelWallet {
+  label: string
+  addr: string
+  belief: number
+  side: 'yes' | 'no' | 'neutral'
+  badge: string | null
+  badgeLbl: string | null
+  vol: string
+  rank: string
+}
+
+export interface WalletIntel {
+  lean: 'yes' | 'no' | 'split'
+  leanPct: number
+  divergence: 'Low' | 'Medium' | 'High'
+  wallets: WalletIntelWallet[]
+}
+
+export interface Recommendation {
+  action: string
+  color: string
+  reasoning: string
+}
+
 export interface AnalysisResult {
   market_name: string
   integrity_res: IntegrityResult
   info_res: InformationResult
   conf_res: ConfidenceResult
+  master_res: {
+    market_stats?: { total_trades?: number; unique_wallets?: number; latest_price?: number }
+    overall_score: number
+    verdict: string
+    wallet_intelligence?: { star_count?: number; aggregate_star_capital?: number; stars?: unknown[] }
+  }
+  recommendation?: Recommendation
+  wallet_intel?: WalletIntel
   price_series: { timestamp: string; price: number }[]
+  trades: { wallet: string; timestamp: string; size: number; price: number; side: string }[]
   trades_count: number
 }
 
