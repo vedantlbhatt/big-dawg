@@ -4,6 +4,9 @@ export interface Market {
   slug: string
   volume: number
   conditionId: string
+  trust_score?: number
+  integrity_status?: string
+  classification?: string
 }
 
 export interface IntegrityResult {
