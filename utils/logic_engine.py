@@ -64,12 +64,14 @@ def master_logic_engine(trades_df, price_series, wallet_summary=None):
         "integrity": {
             "score": round(integrity_score_val, 2),
             "status": integrity_res.get("status", "Unknown"),
-            "risk_factors": integrity_res.get("risk_factors", [])
+            "risk_factors": integrity_res.get("risk_factors", []),
+            "components": integrity_res.get("components", {})
         },
         "information": {
             "score": round(info_score_val, 2),
             "classification": info_res.get("classification", "Unknown"),
-            "primary_driver": info_res.get("primary_driver", "Unknown")
+            "primary_driver": info_res.get("primary_driver", "Unknown"),
+            "components": info_res.get("components", {})
         },
         "wallet_intelligence": {
             "score": round(wallet_score_val, 2),
