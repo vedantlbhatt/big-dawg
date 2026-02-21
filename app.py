@@ -122,8 +122,8 @@ if st.sidebar.button("Analyze Market", use_container_width=True):
                 total_trades=("size", "count"),
             ).reset_index()
             integrity_res = integrity_score(wallet_summary, trades_df)
-            info_res = classify_market_behavior(trades_df, price_series)
-            conf_res = confidence_metrics(trades_df, price_series)
+            info_res = classify_market_behavior(trades_df, price_series, wallet_summary)
+            conf_res = confidence_metrics(trades_df, price_series, integrity_score=integrity_res['score'])
             st.session_state.analysis_result = {
                 "trades_df": trades_df,
                 "price_series": price_series,
@@ -155,10 +155,12 @@ if st.session_state.analysis_result is not None:
     with m1:
         st.write("**INTEGRITY STATUS**")
         st.subheader(integrity_res["status"])
+        st.write(f"Health Score: {integrity_res['score']:.2f}")
         st.markdown('</div>', unsafe_allow_html=True)
     with m2:
         st.write("**MARKET SENTIMENT**")
         st.subheader(f"{info_res['classification']}")
+        st.write(f"Informed: {info_res['components']['informed_score']:.2f}, Retail: {info_res['components']['retail_score']:.2f}, Whale: {info_res['components']['whale_score']:.2f}")
         st.markdown('</div>', unsafe_allow_html=True)
     with m3:
         st.write("**CONFIDENCE SCORE**")
@@ -189,9 +191,9 @@ if st.session_state.analysis_result is not None:
             st.session_state.messages = []
         if not st.session_state.messages:
             greeting = f"""I've extracted signals for the market: **{market_name}**
-- The Integrity Scan shows it's **{integrity_res['status']}**.
-- Overall sentiment is **{info_res['classification']}**.
-- Confidence is **{conf_res['confidence_level']}**.
+- The Integrity Scan shows it's **{integrity_res['status']}** (Score: {integrity_res['score']:.2f}).
+- Overall sentiment is **{info_res['classification']}** (Informed: {info_res['components']['informed_score']:.2f}, Retail: {info_res['components']['retail_score']:.2f}, Whale: {info_res['components']['whale_score']:.2f}).
+- Confidence is **{conf_res['confidence_level']}** ({int(conf_res['data_quality'] * 100)}%).
 - **AI Recommendation**: {rec['action']}
 
 {rec['reasoning']}
