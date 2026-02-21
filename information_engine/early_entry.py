@@ -12,14 +12,16 @@ def early_entry_score(trades, price_series):
         return 0
 
     trades = trades.sort_values("timestamp")
-    price_series = price_series.sort_values("timestamp")
+    price_series = price_series.sort_index()
 
-    price_series["future_price"] = price_series["price"].shift(-5)
-    price_series["future_return"] = (
-        price_series["future_price"] - price_series["price"]
+    # Convert to DataFrame for easier manipulation
+    price_df = price_series.to_frame("price")
+    price_df["future_price"] = price_df["price"].shift(-5)
+    price_df["future_return"] = (
+        price_df["future_price"] - price_df["price"]
     ).abs()
 
-    avg_future_move = price_series["future_return"].mean()
+    avg_future_move = price_df["future_return"].mean()
 
     # Normalize
     score = min(avg_future_move * 5, 1)

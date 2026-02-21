@@ -14,20 +14,14 @@ def fetch_markets(limit=10):
     data = response.json()
 
     markets = []
-    seen_event_ids = set()
 
     for m in data:
-        # Get the event ID to ensure diversity
+        # Get the event title for grouping
         events = m.get("events", [])
-        event_id = events[0].get("id") if events else None
+        event_title = events[0].get("title") if events else m.get("question")
         
-        if event_id and event_id in seen_event_ids:
-            continue
-            
-        if event_id:
-            seen_event_ids.add(event_id)
-
         markets.append({
+            "event_title": event_title,
             "question": m.get("question"),
             "slug": m.get("slug"),
             "volume": float(m.get("volume", 0)),
@@ -37,4 +31,4 @@ def fetch_markets(limit=10):
     df = pd.DataFrame(markets)
     df = df.sort_values("volume", ascending=False)
 
-    return df.head(limit)
+    return df

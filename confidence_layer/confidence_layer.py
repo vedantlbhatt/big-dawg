@@ -28,9 +28,17 @@ def _belief_dispersion(trades: pd.DataFrame) -> float:
 
 def _volatility_confidence(price_series: pd.DataFrame) -> float:
     """Confidence from price stability: 1 / (1 + vol)."""
-    if price_series.empty or "price" not in price_series.columns or len(price_series) < 2:
+    # Handle Series or DataFrame
+    if isinstance(price_series, pd.Series):
+        prices = price_series
+    elif isinstance(price_series, pd.DataFrame) and "price" in price_series.columns:
+        prices = price_series["price"]
+    else:
         return 0.5
-    returns = price_series["price"].pct_change().dropna()
+
+    if prices.empty or len(prices) < 2:
+        return 0.5
+    returns = prices.pct_change().dropna()
     if len(returns) < 2:
         return 0.5
     vol = returns.std()
@@ -59,7 +67,15 @@ def _conviction_score(trades: pd.DataFrame, price_series: pd.DataFrame) -> float
     raw = trades.groupby("wallet").apply(wallet_conviction)
     agg = float(raw.sum()) if isinstance(raw, pd.Series) else 0.0
 
-    returns = price_series["price"].pct_change().dropna()
+    # Handle Series or DataFrame
+    if isinstance(price_series, pd.Series):
+        prices = price_series
+    elif isinstance(price_series, pd.DataFrame) and "price" in price_series.columns:
+        prices = price_series["price"]
+    else:
+        prices = pd.Series()
+
+    returns = prices.pct_change().dropna()
     vol = returns.std()
     if pd.isna(vol) or vol <= 0:
         vol = 1e-6
@@ -79,7 +95,15 @@ def confidence_metrics(
     if use_conviction is None:
         use_conviction = USE_CONVICTION
 
-    current_prob = float(price_series["price"].iloc[-1]) if not price_series.empty else 0.0
+    # Handle Series or DataFrame
+    if isinstance(price_series, pd.Series):
+        prices = price_series
+    elif isinstance(price_series, pd.DataFrame) and "price" in price_series.columns:
+        prices = price_series["price"]
+    else:
+        prices = pd.Series()
+
+    current_prob = float(prices.iloc[-1]) if not prices.empty else 0.0
     disagreement_std = _belief_dispersion(trades_df)
     confidence = _volatility_confidence(price_series)
 
@@ -90,11 +114,20 @@ def confidence_metrics(
     else:
         disagreement_label = "High"
 
+    if confidence < 0.4:
+        confidence_level = "Low"
+    elif confidence < 0.7:
+        confidence_level = "Medium"
+    else:
+        confidence_level = "High"
+
     out = {
         "probability": round(current_prob, 4),
         "disagreement_std": round(disagreement_std, 4),
         "disagreement": disagreement_label,
         "confidence_score": round(confidence, 4),
+        "data_quality": round(confidence, 4),
+        "confidence_level": confidence_level,
     }
     if use_conviction:
         out["conviction_score"] = round(_conviction_score(trades_df, price_series), 4)

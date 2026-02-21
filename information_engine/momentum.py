@@ -10,7 +10,7 @@ def momentum_score(price_series):
     if len(price_series) < 5:
         return 0
 
-    price_series_copy = price_series.copy()
+    price_series_copy = price_series.to_frame("price")
     price_series_copy["return"] = price_series_copy["price"].diff()
 
     trend_strength = abs(price_series_copy["return"].mean())
