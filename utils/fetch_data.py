@@ -89,10 +89,3 @@ def fetch_trades(market_slug_or_id=None):
     df = df.sort_values("timestamp")
     return df
 
-if __name__ == "__main__":
-    # Test with a known active ID
-    print("Testing historical fetch...")
-    result = fetch_trades("0xaf9d0e448129a9f657f851d49495ba4742055d80e0ef1166ba0ee81d4d594214")
-    print(f"Fetched {len(result)} trades.")
-    if not result.empty:
-        print(result.head())
