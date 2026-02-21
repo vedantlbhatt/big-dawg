@@ -87,6 +87,7 @@ def confidence_metrics(
     trades_df: pd.DataFrame,
     price_series: pd.DataFrame,
     use_conviction: Optional[int] = None,
+    integrity_score: Optional[float] = None,
 ) -> dict:
     """
     Returns probability, disagreement level, confidence score, and optionally conviction.
@@ -106,6 +107,10 @@ def confidence_metrics(
     current_prob = float(prices.iloc[-1]) if not prices.empty else 0.0
     disagreement_std = _belief_dispersion(trades_df)
     confidence = _volatility_confidence(price_series)
+
+    # Adjust confidence based on integrity score if provided
+    if integrity_score is not None:
+        confidence = confidence * integrity_score
 
     if disagreement_std < 0.05:
         disagreement_label = "Low"
