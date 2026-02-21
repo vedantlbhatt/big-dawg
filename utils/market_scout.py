@@ -46,12 +46,17 @@ def scout_markets(limit=10):
             conf_res = confidence_metrics(trades_df, price_series)
             
             # Opportunity Score Logic:
-            # Volume + Integrity + Informed Presence
-            volume_norm = min(row['volume'] / 1000000, 1) # Normalize to $1M
+            # We use a weighted model to rank markets:
+            # 30% Volume (Liquidity/Slippage)
+            # 30% Health (Low manipulation risk)
+            # 20% Informed Activity (Edge detection)
+            # 20% Confidence (Price stability)
+            volume_norm = min(row['volume'] / 1000000, 1) 
             health = integrity_res['score']
             is_informed = 1 if "Informed" in info_res['classification'] else 0.5
+            confidence = conf_res['confidence_score']
             
-            opportunity_score = (volume_norm * 0.4) + (health * 0.4) + (is_informed * 0.2)
+            opportunity_score = (volume_norm * 0.3) + (health * 0.3) + (is_informed * 0.2) + (confidence * 0.2)
             
             save_scout_result(
                 slug, 
