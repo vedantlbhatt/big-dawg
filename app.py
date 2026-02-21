@@ -69,6 +69,10 @@ if not fetch_targets:
 
 st.sidebar.info(f"Analyzing {len(fetch_targets)} market(s)")
 
+# Session state: remember which market we last fetched so we refetch when selection changes
+st.session_state.setdefault("last_fetch_target", None)
+st.session_state.setdefault("last_trades_df", None)
+
 # -----------------------------
 # FETCH & AGGREGATE DATA
 # -----------------------------
@@ -160,6 +164,7 @@ How can I help you interpret this market data?"""
 
                 if prompt := st.chat_input("Ask a question..."):
                     st.session_state.messages.append({"role": "human", "content": prompt})
+                    response = "Analysing market data... "
                     if "manipulation" in prompt.lower() or "whale" in prompt.lower():
                         response += f"The integrity status for this market is {integrity_res['status'].lower()}."
                     elif "sentiment" in prompt.lower():
