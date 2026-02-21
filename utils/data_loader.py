@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 import os
+import sqlite3
 
 def save_data(trades_df):
     """
@@ -10,16 +11,16 @@ def save_data(trades_df):
     if not os.path.exists("data"):
         os.makedirs("data")
         
-    # 1. Generate trades.csv
-    trades_path = "data/trades.csv"
+    # 1. Generate trades.parquet
+    trades_path = "data/trades.parquet"
     trades_out = trades_df[[
         "wallet", "timestamp", "size", "price", "side", "tx_id", "outcome"
     ]].copy()
-    trades_out.to_csv(trades_path, index=False)
+    trades_out.to_parquet(trades_path, index=False)
     
-    # 2. Generate price_series.csv (5-minute buckets)
+    # 2. Generate price_series.parquet (5-minute buckets)
     # We use size as volume
-    prices_path = "data/price_series.csv"
+    prices_path = "data/price_series.parquet"
     if not trades_df.empty:
         df_p = trades_df.set_index("timestamp")
         price_series = df_p["price"].resample("5min").agg(['first', 'last', 'max', 'min']).dropna()
@@ -28,7 +29,7 @@ def save_data(trades_df):
         ohlcv = pd.concat([price_series, volume_series], axis=1)
         ohlcv.columns = ["open", "price", "high", "low", "volume"]
         ohlcv.index.name = "timestamp"
-        ohlcv.reset_index().to_csv(prices_path, index=False)
+        ohlcv.reset_index().to_parquet(prices_path, index=False)
     
     # 3. Generate wallet_summary.csv
     wallets_path = "data/wallet_summary.csv"
@@ -67,13 +68,51 @@ def save_data(trades_df):
             })
             
         wallet_df = pd.DataFrame(summary)
-        wallet_df.to_csv(wallets_path, index=False)
+        wallet_df.to_parquet("data/wallet_summary.parquet", index=False)
+
+def init_scout_db():
+    """Initializes the SQLite database for Market Scout."""
+    db_path = "data/scout.sqlite"
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS market_scores (
+            slug TEXT PRIMARY KEY,
+            opportunity_score REAL,
+            integrity_status TEXT,
+            classification TEXT,
+            last_scanned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    conn.commit()
+    conn.close()
+
+def save_scout_result(slug, score, integrity, classification):
+    conn = sqlite3.connect("data/scout.sqlite")
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT OR REPLACE INTO market_scores (slug, opportunity_score, integrity_status, classification, last_scanned_at)
+        VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+    """, (slug, score, integrity, classification))
+    conn.commit()
+    conn.close()
+
+def get_top_scouted_markets(limit=5):
+    if not os.path.exists("data/scout.sqlite"):
+        return pd.DataFrame()
+    conn = sqlite3.connect("data/scout.sqlite")
+    df = pd.read_sql_query("SELECT * FROM market_scores ORDER BY opportunity_score DESC LIMIT ?", conn, params=(limit,))
+    conn.close()
+    return df
 
 def load_trades():
-    return pd.read_csv("data/trades.csv", parse_dates=["timestamp"])
+    path = "data/trades.parquet"
+    return pd.read_parquet(path) if os.path.exists(path) else pd.DataFrame()
 
 def load_prices():
-    return pd.read_csv("data/price_series.csv", parse_dates=["timestamp"])
+    path = "data/price_series.parquet"
+    return pd.read_parquet(path) if os.path.exists(path) else pd.DataFrame()
 
 def load_wallets():
-    return pd.read_csv("data/wallet_summary.csv")
+    path = "data/wallet_summary.parquet"
+    return pd.read_parquet(path) if os.path.exists(path) else pd.DataFrame()
