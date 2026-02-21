@@ -11,6 +11,8 @@ from utils.fetch_data import fetch_trades
 from integrity_engine.integrity_score import integrity_score
 from information_engine.information import classify_market_behavior
 from confidence_layer.confidence import confidence_metrics
+from utils.recommendation_engine import get_recommendation
+from utils.market_scout import scout_markets, get_top_scouted_markets
 from utils.gemini_chat import chat_with_stats
 
 st.set_page_config(page_title="SignalLayer | Polymarket Intelligence", layout="wide")
@@ -23,10 +25,13 @@ if os.path.exists("style.css"):
 st.title("SignalLayer")
 st.markdown("### Advanced Polymarket Intelligence Dashboard")
 
+# Init DB
+init_scout_db()
+
 # -----------------------------
 # MARKET DISCOVERY
 # -----------------------------
-st.header("Available Markets")
+st.header("Global Market Discovery")
 
 markets_df = fetch_markets()
 
@@ -36,6 +41,20 @@ display_df["volume"] = display_df["volume"].apply(lambda x: f"${float(x):,.2f}" 
 
 # Show the markets in a table first
 st.dataframe(display_df, use_container_width=True, hide_index=True)
+
+# Market Scout Section
+with st.expander("🔍 Global Opportunity Scout", expanded=False):
+    st.markdown("Scan top volume markets for high-integrity, informed trade opportunities.")
+    if st.button("Run Global Scout (10 Markets)", use_container_width=True):
+        with st.spinner("Scouting global markets..."):
+            scout_markets(limit=10)
+    
+    top_scouted = get_top_scouted_markets(5)
+    if not top_scouted.empty:
+        st.write("### 🔥 Top Opportunities Found")
+        st.dataframe(top_scouted, use_container_width=True, hide_index=True)
+    else:
+        st.info("Run the scout to see recommended slugs.")
 
 # -----------------------------
 # MARKET SELECTION
@@ -134,20 +153,26 @@ if st.session_state.analysis_result is not None:
 
     m1, m2, m3 = st.columns(3)
     with m1:
-        st.markdown('<div class="metric-card">', unsafe_allow_html=True)
         st.write("**INTEGRITY STATUS**")
         st.subheader(integrity_res["status"])
         st.markdown('</div>', unsafe_allow_html=True)
     with m2:
-        st.markdown('<div class="metric-card">', unsafe_allow_html=True)
         st.write("**MARKET SENTIMENT**")
         st.subheader(f"{info_res['classification']}")
         st.markdown('</div>', unsafe_allow_html=True)
     with m3:
-        st.markdown('<div class="metric-card">', unsafe_allow_html=True)
         st.write("**CONFIDENCE SCORE**")
         st.subheader(f"📊 {int(conf_res['data_quality'] * 100)}% ({conf_res['confidence_level']})")
         st.markdown('</div>', unsafe_allow_html=True)
+
+    # AI Recommendation Layer
+    rec = get_recommendation(integrity_res, info_res, conf_res)
+    st.markdown(f"""
+    <div style="background-color: {rec['color']}33; border: 1px solid {rec['color']}; border-radius: 10px; padding: 20px; margin: 10px 0;">
+        <h3 style="color: {rec['color']}; margin-top: 0;">AI RECOMMENDED ACTION: {rec['action']}</h3>
+        <p style="font-size: 1.1em; line-height: 1.5;">{rec['reasoning']}</p>
+    </div>
+    """, unsafe_allow_html=True)
 
     st.write("---")
     col_main, col_chat = st.columns([1.5, 1])
@@ -167,6 +192,9 @@ if st.session_state.analysis_result is not None:
 - The Integrity Scan shows it's **{integrity_res['status']}**.
 - Overall sentiment is **{info_res['classification']}**.
 - Confidence is **{conf_res['confidence_level']}**.
+- **AI Recommendation**: {rec['action']}
+
+{rec['reasoning']}
 
 How can I help you interpret this market data?"""
             st.session_state.messages.append({"role": "assistant", "content": greeting})
