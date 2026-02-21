@@ -11,8 +11,9 @@ from confidence_layer.confidence import confidence_metrics
 st.set_page_config(page_title="SignalLayer | Polymarket Intelligence", layout="wide")
 
 # Load custom CSS
-with open("style.css") as f:
-    st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
+if os.path.exists("style.css"):
+    with open("style.css") as f:
+        st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
 
 st.title("SignalLayer")
 st.markdown("### Advanced Polymarket Intelligence Dashboard")
@@ -25,13 +26,10 @@ st.header("Available Markets")
 markets_df = fetch_markets()
 
 # Create a cleaner display for the user
-display_df = markets_df[["question", "volume", "slug", "conditionId"]].copy()
+display_df = markets_df[["event_title", "question", "volume", "slug", "conditionId"]].copy()
 display_df["volume"] = display_df["volume"].apply(lambda x: f"${float(x):,.2f}" if x else "$0.00")
 
-# Prepare formatted options for targeted analysis
-ids_with_names = [f"{row['question']} | ID: {row['conditionId']}" for _, row in markets_df.iterrows()]
-
-# Show the 10 markets in a table first
+# Show the markets in a table first
 st.dataframe(display_df, use_container_width=True, hide_index=True)
 
 # -----------------------------
@@ -43,29 +41,55 @@ st.sidebar.header("Market Configuration")
 market_search = st.sidebar.text_input("Search Market by Slug (e.g. 'will-bitcoin-hit-100k-in-2024')", "")
 
 if not market_search:
-    market_choice = st.sidebar.selectbox(
-        "Or select from top markets:",
-        ids_with_names
+    # 1. Select Event
+    unique_events = sorted(markets_df["event_title"].unique())
+    event_choice = st.sidebar.selectbox(
+        "Step 1: Select an Event",
+        unique_events
     )
-    fetch_target = market_choice.split(" | ID: ")[1]
+    
+    # 2. Filter markets for the selected event
+    event_markets = markets_df[markets_df["event_title"] == event_choice]
+    
+    # We want to select ALL associated with an event by default
+    slug_options = {f"{row['question']}": row['conditionId'] for _, row in event_markets.iterrows()}
+    
+    selected_market_name = st.sidebar.selectbox(
+        "Step 2: Select a slug to analyze",
+        options=list(slug_options.keys())
+    )
+    
+    fetch_targets = [slug_options[selected_market_name]]
 else:
-    fetch_target = market_search
+    fetch_targets = [market_search]
 
-st.sidebar.info(f"Targeting: {fetch_target}")
+if not fetch_targets:
+    st.sidebar.warning("Please select at least one market.")
+    st.stop()
+
+st.sidebar.info(f"Analyzing {len(fetch_targets)} market(s)")
 
 # -----------------------------
-# FETCH HISTORICAL DATA
+# FETCH & AGGREGATE DATA
 # -----------------------------
 if st.sidebar.button("Analyze Market", use_container_width=True):
-    with st.spinner(f"Extracting signals for {fetch_target}..."):
-        trades_df = fetch_trades(fetch_target)
+    all_trades = []
+    
+    with st.spinner(f"Extracting signals for {fetch_targets[0]}..."):
+        for target in fetch_targets:
+            df = fetch_trades(target)
+            if not df.empty:
+                all_trades.append(df)
         
-        if not trades_df.empty:
+        if all_trades:
+            trades_df = pd.concat(all_trades).drop_duplicates(subset=["tx_id"]).sort_values("timestamp")
+            
             # Persist data to CSVs
             save_data(trades_df)
             
             # --- DASHBOARD LAYOUT ---
             st.divider()
+            st.subheader(f"Analyzed Market: {selected_market_name if not market_search else market_search}")
             
             # Top Metrics Row
             m1, m2, m3 = st.columns(3)
@@ -93,6 +117,8 @@ if st.sidebar.button("Analyze Market", use_container_width=True):
                 st.markdown('</div>', unsafe_allow_html=True)
                 
             # Confidence Layer Output
+            # Note: For multi-slug, price series might be noisy if prices differ wildly, 
+            # but usually for the same event they are related (e.g. YES/NO)
             price_series = trades_df.set_index("timestamp")["price"].resample("5min").last().ffill()
             conf_res = confidence_metrics(trades_df, price_series)
             with m3:
@@ -107,8 +133,7 @@ if st.sidebar.button("Analyze Market", use_container_width=True):
             col_main, col_chat = st.columns([1.5, 1])
             
             with col_main:
-                st.subheader("Price & Volume Activity")
-                # Simplified price chart for demonstration
+                st.subheader("Price & Volume Activity (Aggregated)")
                 st.line_chart(trades_df.set_index("timestamp")["price"], height=400)
                 
                 with st.expander("View Raw Trade Data"):
@@ -116,41 +141,33 @@ if st.sidebar.button("Analyze Market", use_container_width=True):
 
             with col_chat:
                 st.subheader("Intelligence Chat")
-                st.markdown("Ask about market health, whale activity, or conviction levels.")
                 
                 if "messages" not in st.session_state:
                     st.session_state.messages = []
 
-                # Initial bot greeting based on current engine stats
                 if not st.session_state.messages:
-                    greeting = f"""I've analyzed the signals for this market:
+                    greeting = f"""I've extracted signals for the market: **{selected_market_name if not market_search else market_search}**
 - The Integrity Scan shows it's **{integrity_res['status']}**.
-- Market sentiment is leaning towards **{info_res}**.
-- Overall confidence in these signals is **{conf_res['confidence_level']}**.
+- Overall sentiment is **{info_res}**.
+- Confidence is **{conf_res['confidence_level']}**.
 
-How can I help you interpret these findings?"""
+How can I help you interpret this market data?"""
                     st.session_state.messages.append({"role": "assistant", "content": greeting})
 
-                # Display chat history
                 for msg in st.session_state.messages:
                     role_class = "bot-bubble" if msg["role"] == "assistant" else "user-bubble"
                     st.markdown(f'<div class="chat-bubble {role_class}">{msg["content"]}</div>', unsafe_allow_html=True)
 
                 if prompt := st.chat_input("Ask a question..."):
                     st.session_state.messages.append({"role": "human", "content": prompt})
-                    # Simple rule-based response integration
-                    response = "I'm analyzing that for you... "
                     if "manipulation" in prompt.lower() or "whale" in prompt.lower():
-                        response += f"Based on our integrity engine, there is {integrity_res['status'].lower()} risk of manipulation."
-                    elif "sentiment" in prompt.lower() or "why" in prompt.lower():
-                        response += f"The Information Equality Engine classifies this movement as {info_res}."
-                    elif "confidence" in prompt.lower() or "probability" in prompt.lower():
-                        response += f"We have {conf_res['confidence_level']} confidence in the current price action with {int(conf_res['data_quality']*100)}% data quality."
+                        response += f"The integrity status for this market is {integrity_res['status'].lower()}."
+                    elif "sentiment" in prompt.lower():
+                        response += f"The market movement indicates {info_res}."
                     else:
-                        response += "The market signals are currently stable according to our triad of analysis engines."
+                        response += "The signal remains stable for this market."
                     
                     st.session_state.messages.append({"role": "assistant", "content": response})
                     st.rerun()
-
         else:
-            st.sidebar.warning("No trade data found for this market.")
+            st.sidebar.warning("No trade data found for any of the selected markets.")
