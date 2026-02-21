@@ -22,23 +22,27 @@ def scout_markets(limit=10):
         slug = row['slug']
         condition_id = row['conditionId']
         
-        # Fast Fetch: We only need a small sample for the scout
-        # Note: fetch_trades might need an optional limit for scouting speed
-        # But for now, we'll use the first 500 records it returns if we can
         try:
-            trades_df = fetch_trades(condition_id)
-            if trades_df.empty:
-                continue
+            # 1. Parity Check: If this slug was just analyzed in the dashboard, use that data
+            from streamlit import session_state
+            if session_state.get("analysis_result") and session_state["analysis_result"].get("market_name") == slug:
+                trades_df = session_state["analysis_result"]["trades_df"]
+                price_series = session_state["analysis_result"]["price_series"]
+                wallet_summary = session_state["analysis_result"]["wallet_summary"]
+            else:
+                # 2. Standard Fetch: Use same window (up to 10k) but tail for efficiency
+                trades_df = fetch_trades(condition_id)
+                if trades_df.empty:
+                    continue
                 
-            # Limit to last 500 for speed
-            trades_df = trades_df.tail(500)
-            
-            price_series = trades_df.set_index("timestamp")["price"].resample("30min").last().ffill()
-            
-            wallet_summary = trades_df.groupby("wallet").agg(
-                total_volume=("size", "sum"),
-                total_trades=("size", "count"),
-            ).reset_index()
+                # Align window to 2000 for parity (matches Dashboard depth usually)
+                trades_df = trades_df.tail(2000)
+                price_series = trades_df.set_index("timestamp")["price"].resample("5min").last().ffill()
+                
+                wallet_summary = trades_df.groupby("wallet").agg(
+                    total_volume=("size", "sum"),
+                    total_trades=("size", "count"),
+                ).reset_index()
             
             # Run engines
             integrity_res = integrity_score(wallet_summary, trades_df)
