@@ -201,9 +201,9 @@ if st.session_state.analysis_result is not None:
             st.session_state.messages = []
         if not st.session_state.messages:
             greeting = f"""I've extracted signals for the market: **{market_name}**
-- The Integrity Scan shows it's **{integrity_res['status']}**.
-- Overall sentiment is **{info_res['classification']}**.
-- Confidence is **{conf_res['confidence_level']}**.
+- The Integrity Scan shows it's **{integrity_res['status']}** (Score: {integrity_res['score']:.2f}).
+- Overall sentiment is **{info_res['classification']}** (Informed: {info_res['components']['informed_score']:.2f}, Retail: {info_res['components']['retail_score']:.2f}, Whale: {info_res['components']['whale_score']:.2f}).
+- Confidence is **{conf_res['confidence_level']}** ({int(conf_res['data_quality'] * 100)}%).
 - **AI Recommendation**: {rec['action']}
 
 {rec['reasoning']}
