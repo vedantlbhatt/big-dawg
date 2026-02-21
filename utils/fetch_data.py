@@ -4,42 +4,39 @@ import pandas as pd
 GAMMA_URL = "https://gamma-api.polymarket.com/markets"
 TRADES_URL = "https://data-api.polymarket.com/trades"
 
-def fetch_trades(market_slug_or_id=None):
+def fetch_trades(market_slug_or_id):
     """
-    Fetches historical trade data. 
-    If market_slug_or_id is None or 'global', it fetches across all markets.
+    Fetches historical trade data for a specific market slug or ID.
     """
     condition_id = None
 
-    if market_slug_or_id and market_slug_or_id != "global":
-        # 1. Resolve to conditionId
-        if isinstance(market_slug_or_id, str) and market_slug_or_id.startswith("0x"):
-            condition_id = market_slug_or_id
+    # 1. Resolve to conditionId
+    if isinstance(market_slug_or_id, str) and market_slug_or_id.startswith("0x"):
+        condition_id = market_slug_or_id
+    else:
+        # Try direct slug match first
+        response = requests.get(GAMMA_URL, params={"slug": market_slug_or_id})
+        data = response.json()
+        
+        if isinstance(data, list) and len(data) > 0:
+            condition_id = data[0].get("conditionId")
         else:
-            # Try direct slug match first
-            response = requests.get(GAMMA_URL, params={"slug": market_slug_or_id})
+            # Fallback to search if slug lookup fails
+            response = requests.get(GAMMA_URL, params={"search": market_slug_or_id})
             data = response.json()
-            
-            if isinstance(data, list) and len(data) > 0:
+            if data:
                 condition_id = data[0].get("conditionId")
-            else:
-                # Fallback to search if slug lookup fails
-                response = requests.get(GAMMA_URL, params={"search": market_slug_or_id})
-                data = response.json()
-                if data:
-                    condition_id = data[0].get("conditionId")
 
-        if not condition_id:
-            print(f"Could not resolve {market_slug_or_id} to a conditionId.")
-            return pd.DataFrame()
+    if not condition_id:
+        print(f"Could not resolve {market_slug_or_id} to a conditionId.")
+        return pd.DataFrame()
 
     # 2. Iterative Fetching (Historical Pagination)
     all_trades = []
     params = {
-        "limit": 500  # Data API max is 500
+        "limit": 500,  # Data API max is 500
+        "market": condition_id
     }
-    if condition_id:
-        params["market"] = condition_id
 
     # Fetching loop - Polymarket Data API usually returns trades in reverse chronological order
     # We use timestamps to walk backwards
