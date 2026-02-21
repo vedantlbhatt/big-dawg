@@ -4,7 +4,7 @@ import pandas as pd
 from utils.market_loader import fetch_markets
 from utils.data_loader import *
 from utils.fetch_data import fetch_trades
-from integrity_engine.integrity import integrity_score
+from integrity_engine.integrity_score import integrity_score
 from information_engine.information import classify_market_behavior
 from confidence_layer.confidence import confidence_metrics
 
@@ -73,6 +73,10 @@ st.sidebar.info(f"Analyzing {len(fetch_targets)} market(s)")
 st.session_state.setdefault("last_fetch_target", None)
 st.session_state.setdefault("last_trades_df", None)
 
+# Session state: remember which market we last fetched so we refetch when selection changes
+st.session_state.setdefault("last_fetch_target", None)
+st.session_state.setdefault("last_trades_df", None)
+
 # -----------------------------
 # FETCH & AGGREGATE DATA
 # -----------------------------
@@ -91,6 +95,10 @@ if st.sidebar.button("Analyze Market", use_container_width=True):
             # Persist data to CSVs
             save_data(trades_df)
             
+            # Note: For multi-slug, price series might be noisy if prices differ wildly, 
+            # but usually for the same event they are related (e.g. YES/NO)
+            price_series = trades_df.set_index("timestamp")["price"].resample("5min").last().ffill()
+            
             # --- DASHBOARD LAYOUT ---
             st.divider()
             st.subheader(f"Analyzed Market: {selected_market_name if not market_search else market_search}")
@@ -103,7 +111,7 @@ if st.sidebar.button("Analyze Market", use_container_width=True):
                 total_volume=("size", "sum"),
                 total_trades=("size", "count"),
             ).reset_index()
-            integrity_res = integrity_score(wallet_summary)
+            integrity_res = integrity_score(wallet_summary, trades_df)
             
             with m1:
                 st.markdown('<div class="metric-card">', unsafe_allow_html=True)
@@ -113,17 +121,14 @@ if st.sidebar.button("Analyze Market", use_container_width=True):
                 st.markdown('</div>', unsafe_allow_html=True)
             
             # Information Equality Engine Output
-            info_res = classify_market_behavior(trades_df)
+            info_res = classify_market_behavior(trades_df, price_series)
             with m2:
                 st.markdown('<div class="metric-card">', unsafe_allow_html=True)
                 st.write("**MARKET SENTIMENT**")
-                st.subheader(f"🧠 {info_res}")
+                st.subheader(f"{info_res['classification']}")
                 st.markdown('</div>', unsafe_allow_html=True)
                 
             # Confidence Layer Output
-            # Note: For multi-slug, price series might be noisy if prices differ wildly, 
-            # but usually for the same event they are related (e.g. YES/NO)
-            price_series = trades_df.set_index("timestamp")["price"].resample("5min").last().ffill()
             conf_res = confidence_metrics(trades_df, price_series)
             with m3:
                 st.markdown('<div class="metric-card">', unsafe_allow_html=True)
@@ -152,7 +157,7 @@ if st.sidebar.button("Analyze Market", use_container_width=True):
                 if not st.session_state.messages:
                     greeting = f"""I've extracted signals for the market: **{selected_market_name if not market_search else market_search}**
 - The Integrity Scan shows it's **{integrity_res['status']}**.
-- Overall sentiment is **{info_res}**.
+- Overall sentiment is **{info_res['classification']}**.
 - Confidence is **{conf_res['confidence_level']}**.
 
 How can I help you interpret this market data?"""
@@ -168,7 +173,7 @@ How can I help you interpret this market data?"""
                     if "manipulation" in prompt.lower() or "whale" in prompt.lower():
                         response += f"The integrity status for this market is {integrity_res['status'].lower()}."
                     elif "sentiment" in prompt.lower():
-                        response += f"The market movement indicates {info_res}."
+                        response += f"The market movement indicates {info_res['classification']}."
                     else:
                         response += "The signal remains stable for this market."
                     
