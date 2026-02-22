@@ -48,11 +48,14 @@ def master_logic_engine(trades_df, price_series, wallet_summary=None):
         "info": 0.35
     }
     
-    overall_score = (
+    raw_score = (
         (wallet_score_val * weights["wallet"]) +
         (integrity_score_val * weights["integrity"]) +
         (info_score_val * weights["info"])
     )
+    
+    # Normalize to [0.4, 1.0] range (40% to 100%)
+    overall_score = 0.4 + (raw_score * 0.6)
 
     # 5. Build JSON Summary
     summary = {
