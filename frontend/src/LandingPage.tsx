@@ -346,8 +346,8 @@ body::after {
 }
 .gauge-svg-wrap { position:relative; width:260px; margin:0 auto 8px; }
 .gauge-svg-wrap svg { width:260px; height:150px; overflow:visible; }
-.gauge-label-no { position:absolute; left:8px; bottom:10px; font-size:11px; font-weight:800; color:var(--red); }
-.gauge-label-yes { position:absolute; right:8px; bottom:10px; font-size:11px; font-weight:800; color:var(--lime); }
+.gauge-label-no { position:absolute; left:0; bottom:4px; font-size:11px; font-weight:800; color:var(--red); }
+.gauge-label-yes { position:absolute; right:0; bottom:4px; font-size:11px; font-weight:800; color:var(--lime); }
 
 .gauge-pct { font-size:36px; font-weight:900; color:var(--lime); letter-spacing:-.04em; margin-bottom:2px; }
 .gauge-verdict { font-size:12px; color:var(--text3); font-weight:700; letter-spacing:.06em; text-transform:uppercase; margin-bottom:20px; }
@@ -598,12 +598,26 @@ function ConstellationSVG() {
     { id: 5, pct: 65, y: true },
   ];
   const W = 420, H = 120;
+  const baseY = 55;
   const xOf = (pct: number) => 20 + (pct / 100) * (W - 40);
+
   const sizes = walletDots.map(d => ({ ...d, x: xOf(d.pct) }));
   const xs = sizes.map(d => d.x);
   const mean = xs.reduce((a, b) => a + b, 0) / xs.length;
   const std = Math.sqrt(xs.map(x => (x - mean) ** 2).reduce((a, b) => a + b, 0) / xs.length);
   const connections = [[0, 1], [1, 2], [2, 4], [0, 4]];
+
+  const yesDots = walletDots.filter(d => d.y);
+  const clusterMinPct = yesDots.length ? Math.min(...yesDots.map(d => d.pct)) : 0;
+  const clusterMaxPct = yesDots.length ? Math.max(...yesDots.map(d => d.pct)) : 0;
+  const clusterX1 = xOf(clusterMinPct);
+  const clusterX2 = xOf(clusterMaxPct);
+  const roundDown5 = (n: number) => Math.floor(n / 5) * 5;
+  const roundUp5 = (n: number) => Math.ceil(n / 5) * 5;
+  const clusterLabel = `${roundDown5(clusterMinPct)}–${roundUp5(clusterMaxPct)}%`;
+  const bracketY = baseY - 38;
+  const bracketPath = `M ${clusterX1} ${baseY - 18} L ${clusterX1} ${bracketY} L ${clusterX2} ${bracketY} L ${clusterX2} ${baseY - 18}`;
+
   return (
     <svg viewBox={`0 0 ${W} ${H}`} className="constellation-svg" style={{ height: "140px" }}>
       <defs>
@@ -616,23 +630,28 @@ function ConstellationSVG() {
           <stop offset="100%" stopColor="#ff5470" stopOpacity="0" />
         </radialGradient>
       </defs>
-      <line x1="20" y1="55" x2={W - 20} y2="55" stroke="#22222e" strokeWidth="1.5" />
+      <line x1="20" y1={baseY} x2={W - 20} y2={baseY} stroke="#22222e" strokeWidth="1.5" />
       {[10, 30, 50, 70, 90].map(pct => (
-        <g key={pct} transform={`translate(${xOf(pct)},55)`}>
+        <g key={pct} transform={`translate(${xOf(pct)},${baseY})`}>
           <line y1="-5" y2="5" stroke="#2c2c3e" strokeWidth="1" />
           <text y="18" textAnchor="middle" fill="#44445a" fontSize="9" fontFamily="Figtree,sans-serif" fontWeight="600">{pct}%</text>
         </g>
       ))}
-      <ellipse cx={mean} cy={55} rx={std * 1.6 + 18} ry="22" fill="none" stroke="rgba(185,247,81,.15)" strokeWidth="1.5" strokeDasharray="4 3" className="ellipse-ring" />
+      <ellipse cx={mean} cy={baseY} rx={std * 1.6 + 18} ry="22" fill="none" stroke="rgba(185,247,81,.15)" strokeWidth="1.5" strokeDasharray="4 3" className="ellipse-ring" />
+      {yesDots.length > 1 && (
+        <>
+          <path d={bracketPath} fill="none" stroke="rgba(185,247,81,.6)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+          <text x={(clusterX1 + clusterX2) / 2} y={bracketY - 6} textAnchor="middle" fill="#b9f751" fontSize="9" fontWeight="800" fontFamily="Figtree,sans-serif" letterSpacing="0.02em">{clusterLabel}</text>
+        </>
+      )}
       {connections.map(([a, b], i) => (
-        <line key={i} x1={sizes[a].x} y1={55} x2={sizes[b].x} y2={55} stroke="rgba(185,247,81,.12)" strokeWidth="1.5" strokeDasharray="3 3" />
+        <line key={i} x1={sizes[a].x} y1={baseY} x2={sizes[b].x} y2={baseY} stroke="rgba(185,247,81,.12)" strokeWidth="1.5" strokeDasharray="3 3" />
       ))}
       {sizes.map((d) => (
-        <g key={d.id} transform={`translate(${d.x},55)`}>
+        <g key={d.id} transform={`translate(${d.x},${baseY})`}>
           <circle r="18" fill={d.y ? "url(#dotGlowY)" : "url(#dotGlowN)"} opacity=".7" />
           <circle r="9" fill={d.y ? "rgba(185,247,81,.15)" : "rgba(255,84,112,.12)"} stroke={d.y ? "rgba(185,247,81,.5)" : "rgba(255,84,112,.45)"} strokeWidth="1.5" className="cdot-circle" />
           <text textAnchor="middle" dy="4" fill={d.y ? "#b9f751" : "#ff5470"} fontSize="9" fontWeight="800" fontFamily="Figtree,sans-serif">{d.id}</text>
-          <text y="-18" textAnchor="middle" fill={d.y ? "#b9f751" : "#ff5470"} fontSize="8" fontWeight="700" fontFamily="Figtree,sans-serif" opacity=".8">{d.pct}%</text>
         </g>
       ))}
     </svg>
@@ -892,7 +911,7 @@ export default function LandingPage({
       <section id="s0">
         <span className="land-paw">🐾</span>
         <div className="land-title">Can you <em>trust</em><br />that bet?</div>
-        <div className="land-sub">Big-Dawg reads the signal behind every prediction market — so you know when to bet, and when to walk.</div>
+        <div className="land-sub">We collect, analyze, and gather the data needed to simplify participating in a prediction market by identifying the highest performing wallets and analyzing their actions. Big-Dawg reads the signal behind every prediction market — so you know when to bet, and when to walk.</div>
         <button type="button" className="land-cta" onClick={onBrowseMarkets}>Browse Markets →</button>
         <div className="land-stats">
           <div className="lstat"><div className="lstat-val">{volumeDisplay}</div><div className="lstat-lab">Volume Tracked</div></div>
@@ -1074,7 +1093,7 @@ export default function LandingPage({
         <Starfield count={70} />
         <div className="eyebrow reveal">Step 5 of 5</div>
         <div className="step-headline reveal">We measure how much they <em>agree</em>.</div>
-        <div className="step-body reveal">Tight cluster = clean signal. Wide spread = contested. The constellation shows where each wallet stands.</div>
+        <div className="step-body reveal">We measure the converence of these smart wallets in the current market. Tight cluster = clean signal. Wide spread = contested. The constellation shows where each wallet stands.</div>
         <div className="constellation-wrap reveal">
           <div className="constellation-label">Wallet belief distribution (% YES)</div>
           <ConstellationSVG />
