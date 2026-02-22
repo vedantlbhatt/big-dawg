@@ -445,6 +445,22 @@ function App() {
 
   const walletIntel = analysisResult?.wallet_intel ?? null
 
+  useEffect(() => {
+    if (!walletIntel) return
+    const total = walletIntel.wallets?.length ?? 0
+    const yesCount = walletIntel.yesCount ?? walletIntel.wallets?.filter((w) => w.side === 'yes').length ?? 0
+    const noCount = walletIntel.noCount ?? walletIntel.wallets?.filter((w) => w.side === 'no').length ?? 0
+    console.log('[WalletIntel] Smart wallets:', {
+      totalSmartWallets: total,
+      yesCount,
+      noCount,
+      lean: walletIntel.lean,
+    })
+    if (walletIntel.wallets?.length) {
+      console.log('[WalletIntel] Per-wallet (proxy addr, side):', walletIntel.wallets.map((w) => ({ addr: w.addr, side: w.side })))
+    }
+  }, [walletIntel])
+
   const sendMsg = async () => {
     const val = chatInput.trim()
     if (!val || chatLoading) return
@@ -780,78 +796,45 @@ function App() {
                           </div>
                         </div>
                         <div className={`wi-lean-badge ${walletIntel.lean}`} id="wiLeanBadge">
-                          <div className="wi-lean-pct" id="wiLeanPct">{walletIntel.leanPct}%</div>
+                          <div className="wi-lean-pct" id="wiLeanPct">
+                            {(() => {
+                              const yes = walletIntel.yesCount ?? walletIntel.wallets?.filter((w) => w.side === 'yes').length ?? 0
+                              const no = walletIntel.noCount ?? walletIntel.wallets?.filter((w) => w.side === 'no').length ?? 0
+                              const total = yes + no
+                              const pct = total ? Math.round((100 * Math.max(yes, no)) / total) : 50
+                              return `${pct}%`
+                            })()}
+                          </div>
                           <div className={`wi-lean-dir ${walletIntel.lean}`} id="wiLeanDir">{walletIntel.lean === 'split' ? '~SPLIT' : walletIntel.lean.toUpperCase()}</div>
                         </div>
                       </div>
                       <div className="wi-distribution">
-                        <div className="wi-distribution-label">Where top wallets stand (YES belief)</div>
+                        <div className="wi-distribution-label">Smart wallet actions</div>
                         {(() => {
-                          const bins = 10
-                          const binCounts = Array.from({ length: bins }, () => 0)
-                          walletIntel.wallets.forEach((w) => {
-                            const bin = Math.min(bins - 1, Math.floor((w.belief ?? 0) / (100 / bins)))
-                            binCounts[bin] += 1
-                          })
-                          const maxCount = Math.max(1, ...binCounts)
-                          const peakBin = binCounts.indexOf(maxCount)
-                          const peakStart = peakBin * 10
-                          const peakEnd = peakStart + 10
-                          const summary = maxCount === 0 ? 'No data' : `Most at ${peakStart}–${peakEnd}% YES`
+                          const yesCount = walletIntel.yesCount ?? walletIntel.wallets?.filter((w) => w.side === 'yes').length ?? 0
+                          const noCount = walletIntel.noCount ?? walletIntel.wallets?.filter((w) => w.side === 'no').length ?? 0
+                          const maxCount = Math.max(1, yesCount, noCount)
                           return (
-                            <>
-                              <div className="wi-distribution-dots-row">
-                                <div className="wi-distribution-dots-track">
-                                  {(() => {
-                                    const NUDGE = 2.5
-                                    const OVERLAP_THRESH = 3
-                                    let nudgeIndex = 0
-                                    let lastBelief: number | null = null
-                                    return walletIntel.wallets.map((wlt, i) => {
-                                      const belief = Number(wlt.belief) || 0
-                                      const overlaps = lastBelief !== null && Math.abs(belief - lastBelief) < OVERLAP_THRESH
-                                      if (overlaps) nudgeIndex += 1
-                                      else nudgeIndex = 0
-                                      lastBelief = belief
-                                      const leftPct = Math.min(98, Math.max(2, belief + (nudgeIndex * NUDGE)))
-                                      return (
-                                        <div
-                                          key={wlt.addr}
-                                          className={`wi-wallet-dot ${wlt.side}`}
-                                          style={{ left: `${leftPct}%` }}
-                                          title={`#${i + 1} ${wlt.addr} · ${wlt.belief}% YES`}
-                                          aria-hidden="false"
-                                        />
-                                      )
-                                    })
-                                  })()}
+                            <div className="wi-vertical-bars">
+                              <div className="wi-vertical-bar-col">
+                                <div className="wi-vertical-bar-wrap">
+                                  <div className="wi-vertical-bar yes" style={{ height: `${(yesCount / maxCount) * 100}%` }} title={`${yesCount} wallet(s) YES`} />
+                                </div>
+                                <div className="wi-vertical-bar-label">
+                                  <span className="wi-bar-side yes">YES</span>
+                                  <span className="wi-bar-count">{yesCount}</span>
                                 </div>
                               </div>
-                              <div className="wi-distribution-bars-wrap">
-                                <div className="wi-distribution-bars">
-                                  {binCounts.map((count, i) => (
-                                    <div
-                                      key={i}
-                                      className="wi-distribution-bar"
-                                      style={{
-                                        width: `${100 / bins}%`,
-                                        height: `${maxCount === 0 ? 0 : (count / maxCount) * 100}%`,
-                                      }}
-                                      title={`${i * 10}-${(i + 1) * 10}% YES: ${count} wallet${count !== 1 ? 's' : ''}`}
-                                    />
-                                  ))}
+                              <div className="wi-vertical-bar-col">
+                                <div className="wi-vertical-bar-wrap">
+                                  <div className="wi-vertical-bar no" style={{ height: `${(noCount / maxCount) * 100}%` }} title={`${noCount} wallet(s) NO`} />
+                                </div>
+                                <div className="wi-vertical-bar-label">
+                                  <span className="wi-bar-side no">NO</span>
+                                  <span className="wi-bar-count">{noCount}</span>
                                 </div>
                               </div>
-                              <div className="wi-distribution-axis">
-                                <div className="wi-distribution-track" />
-                                <div className="wi-distribution-labels">
-                                  {[0, 25, 50, 75, 100].map((p) => (
-                                    <span key={p} className="wi-distribution-tick" style={{ left: `${p}%` }}>{p}%</span>
-                                  ))}
-                                </div>
-                              </div>
-                              <div className="wi-distribution-summary">{summary}</div>
-                            </>
+                            </div>
                           )
                         })()}
                       </div>

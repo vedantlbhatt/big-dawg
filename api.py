@@ -75,33 +75,35 @@ def _serialize_ts(ts):
     return str(ts)
 
 
-# Same star criteria as logic_engine: ROI threshold + minimum size
-WALLET_INTEL_ROI_MIN = 0.15  # 15% ROI
-WALLET_INTEL_COST_BASIS_MIN = 10  # $10 min position
-WALLET_INTEL_MAX_WALLETS = 25  # cap for UI (all that pass threshold, up to this many)
+# Same star criteria as logic_engine: ROI threshold only (no cost basis filter)
+WALLET_INTEL_ROI_MIN = 0.10  # 15% ROI
+WALLET_INTEL_MAX_WALLETS = 50  # cap for UI (all that pass threshold, up to this many)
 
 def _build_wallet_intel_for_ui(wallet_summary):
     """Build wallet intel from wallet_summary for React UI: lean, divergence, wallets with belief/side.
-    Uses same star criteria as logic_engine (ROI + cost_basis threshold), not fixed top-N by size."""
+    Primary: wallets with ROI >= threshold. Fallback: top by cost basis (min $1) so card still shows data."""
+    empty = {
+        "lean": "split",
+        "leanPct": 50,
+        "consensusPct": 50,
+        "yesCount": 0,
+        "noCount": 0,
+        "divergence": "Medium",
+        "wallets": [],
+    }
     if wallet_summary is None or wallet_summary.empty:
-        return {
-            "lean": "split",
-            "leanPct": 50,
-            "divergence": "Medium",
-            "wallets": [],
-        }
+        return empty
     import pandas as pd
-    # Filter to wallets that pass star threshold (same as logic_engine)
-    stars = wallet_summary[
-        (wallet_summary["roi"] >= WALLET_INTEL_ROI_MIN) &
-        (wallet_summary["cost_basis"] > WALLET_INTEL_COST_BASIS_MIN)
-    ]
-    if stars.empty:
-        return {"lean": "split", "leanPct": 50, "divergence": "Medium", "wallets": []}
-    # Sort by cost_basis desc, cap for UI
-    df = stars.sort_values("cost_basis", ascending=False).head(WALLET_INTEL_MAX_WALLETS)
+    # Primary: wallets that pass ROI threshold
+    stars = wallet_summary[wallet_summary["roi"] >= WALLET_INTEL_ROI_MIN]
+    if not stars.empty:
+        df = stars.sort_values("cost_basis", ascending=False).head(WALLET_INTEL_MAX_WALLETS)
+    else:
+        # Fallback: no one passed ROI — use top wallets by cost basis (min $1) so card still shows data
+        fallback = wallet_summary[wallet_summary["cost_basis"] > 1]
+        df = fallback.sort_values("cost_basis", ascending=False).head(WALLET_INTEL_MAX_WALLETS) if not fallback.empty else pd.DataFrame()
     if df.empty:
-        return {"lean": "split", "leanPct": 50, "divergence": "Medium", "wallets": []}
+        return empty
     # Belief = avg_entry_price as 0-100 (YES probability)
     beliefs = (df["avg_entry_price"] * 100).clip(0, 100)
     yes_count = (df["net_position"] > 0).sum()
@@ -149,9 +151,14 @@ def _build_wallet_intel_for_ui(wallet_summary):
             "vol": vol,
             "rank": f"Top {rank_pct}%" if n > 1 else "Top 1%",
         })
+    total = yes_count + no_count
+    consensus_pct = round(100 * max(yes_count, no_count) / total) if total else 50
     return {
         "lean": lean,
         "leanPct": lean_pct,
+        "consensusPct": consensus_pct,
+        "yesCount": int(yes_count),
+        "noCount": int(no_count),
         "divergence": divergence,
         "wallets": wallets,
     }

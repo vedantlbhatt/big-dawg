@@ -1533,7 +1533,8 @@ body::after {
   color: var(--text3);
   text-transform: uppercase;
   letter-spacing: .06em;
-  margin-bottom: 10px;
+  margin-bottom: 20px;
+  display: block;
 }
 
 .wi-distribution-dots-row {
@@ -1639,6 +1640,73 @@ body::after {
   margin-top: 8px;
   font-size: 12px;
   color: var(--text2);
+}
+
+/* Vertical YES/NO bar chart with count on each bar */
+.wi-vertical-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 24px;
+  height: 80px;
+  margin-top: 0;
+  padding-top: 20px;
+  min-height: 80px;
+  border-top: 1px solid var(--border);
+}
+
+.wi-vertical-bar-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.wi-vertical-bar-col .wi-vertical-bar-wrap {
+  height: 52px;
+  width: 100%;
+  max-width: 48px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.wi-vertical-bar {
+  width: 100%;
+  max-width: 48px;
+  max-height: 100%;
+  min-height: 4px;
+  border-radius: 6px 6px 0 0;
+  transition: height .3s ease;
+}
+
+.wi-vertical-bar.yes {
+  background: var(--lime);
+}
+
+.wi-vertical-bar.no {
+  background: var(--red);
+}
+
+.wi-vertical-bar-label {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.wi-bar-side.yes { color: var(--lime); }
+.wi-bar-side.no { color: var(--red); }
+
+.wi-bar-count {
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--text);
 }
 
 .wi-wallets {
