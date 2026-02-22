@@ -221,16 +221,16 @@ function App() {
       .catch(() => setStats(null))
   }, [API_BASE])
 
-  // Fetch predictive insights
+  // Prefetch predictive insights early (landing/app load) so markets page feels instant
   useEffect(() => {
-    if (!API_BASE || page !== 'markets') return
+    if (!API_BASE || insightsLoading || predictiveInsights) return
     setInsightsLoading(true)
     fetch(`${API_BASE}/api/predictive_insights`)
       .then(res => res.json())
       .then(data => setPredictiveInsights(data))
       .catch(() => setPredictiveInsights(null))
       .finally(() => setInsightsLoading(false))
-  }, [API_BASE, page])
+  }, [API_BASE, insightsLoading, predictiveInsights])
 
   // Debounced market fetching with cancellation support
   useEffect(() => {
@@ -374,7 +374,7 @@ function App() {
       {page !== 'landing' && (
         <nav className="nav" id="mainNav">
           <div className="nav-logo" onClick={() => go('markets')} role="button">
-            <div className="logo-paw"><img src="/reddog.png" alt="Big-Dawg" /></div>
+            <div className="logo-paw"><img src="/reddog-removebg-preview.png" alt="Big-Dawg" /></div>
             <span>Big<span className="logo-sup">-Dawg</span></span>
           </div>
           <div className="nav-crumb" id="navCrumb">
@@ -726,7 +726,7 @@ function App() {
                   <div className="chat-card bento-card bento-chat">
                     <div className="chat-header">
                       <div className="chat-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <img src="/reddog.png" alt="" style={{ width: 20, height: 20, objectFit: 'contain', borderRadius: 4 }} />
+                        <img src="/reddog-removebg-preview.png" alt="" style={{ width: 20, height: 20, objectFit: 'contain', borderRadius: 4 }} />
                         Ask Big-Dawg
                       </div>
                       <div className="ai-tag">AI</div>
