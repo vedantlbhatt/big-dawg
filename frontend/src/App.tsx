@@ -144,9 +144,6 @@ const PredictiveAlphaDashboard = ({ data, loading }: { data: PredictiveInsights 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24, position: 'relative', zIndex: 1 }}>
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-            <div className={`alpha-r2-badge ${!isHighConfidence ? 'low' : ''}`}>
-              {isHighConfidence ? 'HIGH CONFIDENCE' : 'MODERATE CONFIDENCE'}
-            </div>
             <div style={{ fontSize: 10, fontWeight: 800, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '.1em' }}>Alpha Engine v1</div>
           </div>
           <h2 style={{ fontSize: 20, fontWeight: 800, margin: 0, color: 'var(--text)', fontFamily: 'var(--serif)', fontStyle: 'italic' }}>Real-time Alpha Analysis</h2>
