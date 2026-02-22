@@ -393,7 +393,7 @@ function App() {
                           <span style={{ color: 'var(--lime)', letterSpacing: '-0.02em' }}>{yesLab.toUpperCase()} {yesPct}%</span>
                           <span style={{ color: 'var(--red)', letterSpacing: '-0.02em' }}>NO {noPct}%</span>
                         </div>
-                        <div className="tmini-lbl" style={{ fontSize: 7, marginTop: 0 }}>{totalV > 0 ? 'Outcome Capital' : 'Price Sentiment'}</div>
+                        <div className="tmini-lbl" style={{ fontSize: 7, marginTop: 0 }}>{totalV > 0 ? 'Volume Sentiment' : 'Price Sentiment'}</div>
                       </div>
                     );
                   })()}
@@ -488,11 +488,13 @@ function App() {
                 <div className="verdict-desc" id="vDesc">
                   {rec?.reasoning ?? analysisResult.integrity_res?.status ?? ''}
                 </div>
-                <div className="prob-row">
+                <div className="prob-row" style={{ position: 'relative', marginTop: 12 }}>
+                  <div style={{ position: 'absolute', top: -14, left: 0, width: '100%', textAlign: 'center', fontSize: 9, fontWeight: 800, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '.08em' }}>Volume Sentiment (Trade Weighting)</div>
                   <div className="prob-block"><div className="prob-pct yes" id="vYes">{sentimentYesPct}%</div><div className="prob-out">YES</div></div>
                   <div className="prob-sep" /><div className="prob-vs">vs</div><div className="prob-sep" />
                   <div className="prob-block"><div className="prob-pct no" id="vNo">{sentimentNoPct}%</div><div className="prob-out">NO</div></div>
                 </div>
+                <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 8 }}>Market Price (Implied Probability)</div>
                 <div className="verdict-btns">
                   <button type="button" className="vbet yes" id="vBetYes">Buy YES · {yesPct}¢</button>
                   <button type="button" className="vbet no" id="vBetNo">Buy NO · {noPct}¢</button>
@@ -748,7 +750,6 @@ function App() {
                 <div className="tiles-row" style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
                   {/* Integrity Tile */}
                   {(() => {
-                    const ic = analysisResult.integrity_res?.components
                     const iCls = analysisResult.integrity_res?.score && analysisResult.integrity_res.score < 0.3 ? 'bad' : analysisResult.integrity_res?.score && analysisResult.integrity_res.score < 0.6 ? 'ok' : 'good'
                     const iAns = analysisResult.integrity_res?.status ?? ''
                     const iDesc = `Score ${(analysisResult.integrity_res?.score ?? 0) * 100}%`

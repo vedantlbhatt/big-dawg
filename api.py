@@ -340,10 +340,6 @@ def analyze_market(req: AnalyzeRequest):
             # Use recent trades for faster processing (most recent 1000 trades are most relevant)
             analysis_trades = trades_df.tail(1000) if len(trades_df) > 1000 else trades_df
             
-            # Resample price for confidence
-            price_series = analysis_trades.set_index("timestamp")["price"].resample("5min").last().ffill()
-            wallet_summary = get_wallet_analysis(analysis_trades)
-            
             # Try to resolve yes/no labels from metadata if available
             yes_label = "YES"
             no_label = "NO"
@@ -361,6 +357,15 @@ def analyze_market(req: AnalyzeRequest):
                                 no_label = outcomes[1] if len(outcomes) > 1 else "NO"
                 except Exception:
                     pass
+
+            # NORMALIZATION: Ensure all prices reflect the 'YES' side (probability)
+            # Only do this ONCE after labels are resolved to avoid double-inversion
+            from utils.fetch_data import normalize_trade_prices
+            analysis_trades = normalize_trade_prices(analysis_trades, yes_label=yes_label)
+
+            # Recalculate price series and wallet summary on normalized data
+            price_series = analysis_trades.set_index("timestamp")["price"].resample("5min").last().ffill()
+            wallet_summary = get_wallet_analysis(analysis_trades)
 
             # Calculate volume split for sync
             yes_vol, no_vol = calculate_volume_split(trades_df, yes_label=yes_label, no_label=no_label)
@@ -447,6 +452,7 @@ def analyze_market(req: AnalyzeRequest):
                 "wallet_intel": wallet_intel,
                 "yes_vol": yes_vol,
                 "no_vol": no_vol,
+                "current_price": float(yes_vol / (yes_vol + no_vol + 1e-9)) if (yes_vol + no_vol) > 0 else 0.5, # Fallback, but App uses this for display sometimes
                 "price_series": price_list,
                 "trades": trades_list,
                 "trades_count": len(analysis_trades),

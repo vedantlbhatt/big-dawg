@@ -241,3 +241,26 @@ def calculate_volume_split(trades_df, yes_label=None, no_label=None):
     print(f"📊 Volume Split [{slug}]: {yes_val}={yes_vol:.2f} | {no_val}={no_vol:.2f}")
     
     return yes_vol, no_vol
+
+
+def normalize_trade_prices(trades_df, yes_label=None):
+    """
+    Normalizes trade prices to the YES side.
+    If a trade is for 'NO', price = 1.0 - price.
+    """
+    if trades_df.empty:
+        return trades_df
+        
+    df = trades_df.copy()
+    df['outcome_norm'] = df['outcome'].astype(str).str.strip().str.upper()
+    
+    yes_variants = {'YES', 'PURCHASE YES', 'TRUE', 'LONG', 'WON', 'WIN'}
+    if yes_label:
+        yes_variants.add(str(yes_label).strip().upper())
+        
+    # If it's NOT a YES variant, assume it's a NO variant or something that needs inverting
+    # For binary markets, this is robust. For multi-outcome, we might need more logic.
+    mask = ~df['outcome_norm'].isin(yes_variants)
+    df.loc[mask, 'price'] = 1.0 - df.loc[mask, 'price']
+    
+    return df
