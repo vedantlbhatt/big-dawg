@@ -134,10 +134,15 @@ function PriceChartSVG({ priceSeries, currentPct }: { priceSeries: { timestamp: 
 }
 
 const PredictiveAlphaDashboard = ({ data, loading }: { data: PredictiveInsights | null; loading: boolean }) => {
-  if (loading) return <div className="alpha-dashboard" style={{ padding: 40, textAlign: 'center', opacity: 0.5 }}>Calculating global alpha signal...</div>;
+  if (loading) return <div className="alpha-dashboard" style={{ padding: 40, textAlign: 'center', opacity: 0.5 }}>Computing 30-min market alpha drivers...</div>;
   if (!data || data.error) return null;
 
   const features = Object.entries(data.coefficients).sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]));
+  const featureMeta: Record<string, { primary: string; opposite: string }> = {
+    whale_activity: { primary: 'Whale Activity', opposite: 'Retail Activity' },
+    order_imbalance: { primary: 'Buy Pressure', opposite: 'Sell Pressure' },
+    volatility: { primary: 'Volatility', opposite: 'Stability' },
+  };
 
   return (
     <div className="alpha-dashboard">
@@ -153,27 +158,33 @@ const PredictiveAlphaDashboard = ({ data, loading }: { data: PredictiveInsights 
 
       <div className="alpha-grid">
         {features.map(([name, coef]) => {
-          const absVal = Math.min(100, Math.abs(coef * 500)); // Normalized for display
+          const absVal = Math.min(100, Math.abs(coef * 500));
+          const level = Math.round(absVal);
+          const inverseLevel = Math.max(0, 100 - level);
+          const meta = featureMeta[name] ?? { primary: name.replace('_', ' '), opposite: `Inverse ${name.replace('_', ' ')}` };
+          const primaryLabel = coef >= 0 ? meta.primary : meta.opposite;
+          const oppositeLabel = coef >= 0 ? meta.opposite : meta.primary;
           return (
             <div key={name} className="alpha-card">
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: 10, fontWeight: 800, color: 'var(--text3)', textTransform: 'uppercase' }}>{name.replace('_', ' ')}</span>
-                <span style={{ fontSize: 13, fontWeight: 800, color: coef > 0 ? 'var(--lime)' : 'var(--red)' }}>
-                  {coef > 0 ? '↑' : '↓'} {(Math.abs(coef) * 100).toFixed(2)}%
+                <span style={{ fontSize: 10, fontWeight: 800, color: 'var(--text3)', textTransform: 'uppercase' }}>{primaryLabel}</span>
+                <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--lime)' }}>
+                  ↑ {level}%
                 </span>
               </div>
               <div className="alpha-influence-bar">
                 <div
                   className="alpha-influence-fill"
                   style={{
-                    width: `${absVal}%`,
-                    background: coef > 0 ? 'var(--lime)' : 'var(--red)',
-                    boxShadow: `0 0 12px ${coef > 0 ? 'var(--lime)' : 'var(--red)'}44`
+                    width: `${level}%`,
+                    background: 'var(--lime)',
+                    boxShadow: '0 0 12px var(--lime)44'
                   }}
                 />
               </div>
-              <div style={{ marginTop: 8, fontSize: 9, fontWeight: 600, color: 'var(--text3)' }}>
-                {coef > 0 ? 'Positive' : 'Negative'} price correlation
+              <div style={{ marginTop: 8, fontSize: 9, fontWeight: 600, color: 'var(--text3)', display: 'flex', justifyContent: 'space-between' }}>
+                <span>{primaryLabel}: {level}%</span>
+                <span>{oppositeLabel}: {inverseLevel}%</span>
               </div>
             </div>
           );
