@@ -587,7 +587,6 @@ function App() {
                   <div className="prob-sep" /><div className="prob-vs">vs</div><div className="prob-sep" />
                   <div className="prob-block"><div className="prob-pct no" id="vNo">{noPct}%</div><div className="prob-out">NO</div></div>
                 </div>
-                <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 8 }}>Market Price (Implied Probability)</div>
               </div>
 
               <div className="analysis-body bento-layout">
