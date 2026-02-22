@@ -653,6 +653,19 @@ body::after {
   gap: 0;
 }
 
+.analysis-page-title {
+  font-family: var(--serif);
+  font-size: clamp(1.5rem, 4vw, 2.25rem);
+  font-weight: 400;
+  font-style: italic;
+  color: var(--text);
+  text-align: center;
+  margin: 0 0 12px;
+  line-height: 1.25;
+  max-width: 900px;
+  letter-spacing: -0.02em;
+}
+
 .verdict-meta-pill {
   display: inline-flex;
   align-items: center;
@@ -1044,16 +1057,45 @@ body::after {
 
 .analysis-body {
   display: grid;
-  grid-template-columns: 1fr 340px;
+  /* Equal columns: market health + wallet intel match width of price-over-time + chat */
+  grid-template-columns: 1fr 1fr;
   gap: 18px;
   padding: 20px 28px 44px;
   max-width: 1360px;
   width: 100%;
   margin: 0 auto;
+  align-items: stretch;
+  min-height: 580px;
 }
 
-.bento-layout {
-  align-items: start;
+/* Grid cells: flex so the card inside can fill the row height */
+.analysis-body .analysis-cell {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* Top-left: card height matches Price over time chart in same row */
+.analysis-body .analysis-top-left .bento-signals {
+  width: 100%;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Single tile: full width, stretches to fill card height */
+.analysis-body .analysis-top-left .bento-signals .tiles-row.full-analysis-tiles {
+  flex: 1;
+  min-height: 0;
+  grid-template-columns: 1fr;
+  grid-template-rows: 1fr;
+  align-items: stretch;
+}
+
+.analysis-body .analysis-top-left .bento-signals .tile {
+  min-height: 210px;
+  height: 100%;
 }
 
 .bento-card {
@@ -1070,6 +1112,31 @@ body::after {
   display: flex;
   flex-direction: column;
   gap: 16px;
+  min-height: 0;
+}
+
+.analysis-body .analysis-left.bento-column-main {
+  display: flex;
+  flex-direction: column;
+  grid-template-columns: unset;
+}
+
+.analysis-body .analysis-left .bento-signals,
+.analysis-body .analysis-left .bento-wallet {
+  flex-shrink: 0;
+}
+
+.analysis-body .analysis-left .chart-card.bento-chart {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.analysis-body .analysis-left .chart-card .chart-wrap {
+  flex: 1;
+  min-height: 280px;
+  height: auto;
 }
 
 .bento-column-main {
@@ -1082,10 +1149,24 @@ body::after {
   display: flex;
   flex-direction: column;
   gap: 16px;
+  min-height: 0;
 }
 
 .bento-column-side {
-  align-self: start;
+  align-self: stretch;
+}
+
+.analysis-body .chat-card {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.analysis-body .chat-card .chat-log {
+  flex: 1;
+  min-height: 120px;
+  overflow-y: auto;
 }
 
 .bento-signals,
@@ -1217,6 +1298,13 @@ body::after {
   font-size: 13px;
   color: var(--text2);
   line-height: 1.6;
+}
+
+.tile-blurb {
+  font-size: 12px;
+  color: var(--text3);
+  line-height: 1.5;
+  margin-top: 10px;
 }
 
 .tile-bars {
@@ -1430,101 +1518,79 @@ body::after {
   color: var(--text2);
 }
 
-.wi-dot-chart {
+/* Distribution: clean histogram + axis, no overlapping dots */
+.wi-distribution {
   padding: 14px 20px;
   border-bottom: 1px solid var(--border);
 }
 
-.wi-dot-chart-label {
+.wi-distribution-label {
   font-size: 11px;
   font-weight: 700;
   color: var(--text3);
   text-transform: uppercase;
   letter-spacing: .06em;
-  margin-bottom: 12px;
+  margin-bottom: 10px;
 }
 
-.dot-chart-wrap {
-  position: relative;
-  height: 48px;
+.wi-distribution-bars-wrap {
+  height: 32px;
+  display: flex;
+  align-items: flex-end;
+  margin-bottom: 6px;
 }
 
-.dot-chart-axis {
-  position: relative;
-  height: 48px;
+.wi-distribution-bars {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  align-items: flex-end;
+  gap: 1px;
 }
 
-.dot-chart-track {
-  position: absolute;
-  top: 20px;
-  left: 0;
-  right: 0;
-  height: 2px;
+.wi-distribution-bar {
+  flex: 1;
+  min-width: 0;
+  min-height: 4px;
   background: var(--border2);
-  border-radius: 1px;
+  border-radius: 2px 2px 0 0;
+  align-self: flex-end;
+  transition: height .2s ease;
 }
 
-.dot-chart-ticks {
+.wi-distribution-axis {
+  position: relative;
+  height: 20px;
+}
+
+.wi-distribution-track {
   position: absolute;
   top: 0;
   left: 0;
   right: 0;
-  bottom: 0;
-}
-
-.tick-line {
-  position: absolute;
-  bottom: 0;
-  width: 1px;
-  height: 10px;
+  height: 1px;
   background: var(--border2);
-  transform: translateX(-50%);
 }
 
-.tick-lbl {
+.wi-distribution-labels {
   position: absolute;
-  bottom: -18px;
-  font-size: 9px;
-  color: var(--text3);
-  transform: translateX(-50%);
-  font-weight: 600;
-}
-
-.wallet-dot {
-  position: absolute;
-  top: 8px;
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  left: 0;
+  right: 0;
+  top: 6px;
   font-size: 10px;
-  font-weight: 800;
+  font-weight: 600;
+  color: var(--text3);
+}
+
+.wi-distribution-tick {
+  position: absolute;
   transform: translateX(-50%);
-  cursor: pointer;
-  transition: transform .15s;
-  border: 2px solid var(--bg);
 }
 
-.wallet-dot:hover {
-  transform: translateX(-50%) scale(1.2);
-  z-index: 10;
-}
-
-.wallet-dot.yes {
-  background: var(--lime);
-  color: #0c0c0f;
-}
-
-.wallet-dot.no {
-  background: var(--red);
-  color: white;
-}
-
-.wallet-dot.neutral {
-  background: var(--amber);
-  color: #0c0c0f;
+.wi-distribution-summary {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--text2);
 }
 
 .wi-wallets {
@@ -1727,6 +1793,19 @@ body::after {
 
 .chart-wrap {
   height: 230px;
+  min-width: 0; /* allow shrinking in grid */
+}
+
+/* Analysis 4-box: chart card and graph fill the column and scale up */
+.analysis-body .chart-card {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.analysis-body .chart-card .chart-wrap {
+  width: 100%;
+  min-height: 240px;
+  flex: 1;
 }
 
 .price-chart-container {
@@ -2126,7 +2205,7 @@ body::after {
 
 @media (max-width: 1180px) {
   .analysis-body {
-    grid-template-columns: 1fr 320px;
+    grid-template-columns: 1fr 1fr;
     gap: 14px;
     padding: 18px 20px 36px;
   }
@@ -2149,6 +2228,12 @@ body::after {
 @media (max-width: 1024px) {
   .analysis-body {
     grid-template-columns: 1fr;
+    min-height: 0;
+  }
+
+  .analysis-body .analysis-left .chart-card .chart-wrap {
+    flex: none;
+    height: 320px;
   }
 
   .analysis-right {

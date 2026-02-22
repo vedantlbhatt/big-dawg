@@ -282,7 +282,7 @@ const PredictiveAlphaDashboard = ({ data, loading }: { data: PredictiveInsights 
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span style={{ fontSize: 10, fontWeight: 800, color: 'var(--text3)', textTransform: 'uppercase' }}>{name.replace('_', ' ')}</span>
                 <span style={{ fontSize: 13, fontWeight: 800, color: coef > 0 ? 'var(--lime)' : 'var(--red)' }}>
-                  {coef > 0 ? '↑' : '↓'} {(Math.abs(coef) * 100).toFixed(2)}%
+                  {coef > 0 ? '+' : '-'} {(Math.abs(coef) * 100).toFixed(2)}%
                 </span>
               </div>
               <div className="alpha-influence-bar">
@@ -459,11 +459,14 @@ function App() {
     }
   }
 
-  const displayMarketName = analysisResult?.market_name ?? ''
+  const marketSlug = analysisResult?.market_name ?? ''
+  const displayMarketName = marketSlug
+    .split('-')
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+    .join(' ')
   const trustScore = Math.round((analysisResult?.master_res?.overall_score ?? analysisResult?.integrity_res?.score ?? 0) * 100)
   const trustCls = trustClass(trustScore)
   const yesPct = Math.round((analysisResult?.conf_res?.probability ?? 0) * 100)
-  const noPct = 100 - yesPct
 
   const totalV = (analysisResult?.yes_vol || 0) + (analysisResult?.no_vol || 0)
   const sentimentYesPct = totalV > 0
@@ -594,10 +597,10 @@ function App() {
                 </div>
                 {m.classification && (
                   <div className="smart-lean-chip" style={{ background: m.classification.includes('Whale') ? 'var(--purple-dim)' : m.classification.includes('Informed') ? 'var(--lime-dim)' : 'var(--blue-dim)', color: m.classification.includes('Whale') ? 'var(--purple)' : m.classification.includes('Informed') ? 'var(--lime)' : 'var(--blue)' }}>
-                    🧠 {m.classification.split(' ').pop()}
+                    {m.classification.split(' ').pop()}
                   </div>
                 )}
-                <span className="ev-arrow">→</span>
+                <span className="ev-arrow">&rarr;</span>
               </div>
             </div>
           ))}
@@ -610,7 +613,7 @@ function App() {
               onClick={() => setVisibleCount(prev => prev + 20)}
               style={{ padding: '12px 32px', fontSize: 14 }}
             >
-              See More Markets ↓
+              See More Markets
             </button>
           </div>
         )}
@@ -622,7 +625,7 @@ function App() {
           {analyzing && !analysisResult && (
             <div style={{ textAlign: 'center', padding: 60, color: 'var(--text2)' }}>
               <div style={{ fontSize: 18, marginBottom: 20 }}>Running intelligence engines...</div>
-              <div style={{ fontSize: 14, marginBottom: 10 }}>🔍 Analyzing integrity · 🧠 Information layer · 🎯 Confidence metrics</div>
+              <div style={{ fontSize: 14, marginBottom: 10 }}>Analyzing integrity · Information layer · Confidence metrics</div>
             </div>
           )}
           {analysisError && !analysisResult && (
@@ -635,6 +638,7 @@ function App() {
           {analysisResult && (
             <>
               <div className="verdict-hero bento-hero">
+                <h1 className="analysis-page-title" id="analysisMarketTitle">{displayMarketName}</h1>
                 <div className="verdict-meta-pill">
                   Live · Polymarket data · Logic engine
                 </div>
@@ -670,10 +674,6 @@ function App() {
                 </div>
 
                 <div className="verdict-primary bento-card">
-                  <div className="verdict-mkt-row">
-                    <div className="verdict-mkt-emoji">🗳</div>
-                    <div className="verdict-mkt-name" id="vName">{displayMarketName}</div>
-                  </div>
                   <div className="verdict-line" id="vLine">
                     {analysisResult.master_res?.verdict ?? 'Neutral'}
                   </div>
@@ -687,15 +687,10 @@ function App() {
                   <div className="prob-sep" /><div className="prob-vs">vs</div><div className="prob-sep" />
                   <div className="prob-block"><div className="prob-pct no" id="vNo">{sentimentNoPct}%</div><div className="prob-out">NO</div></div>
                 </div>
-                <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 8 }}>Market Price (Implied Probability)</div>
-                <div className="verdict-btns">
-                  <button type="button" className="vbet yes" id="vBetYes">Buy YES · {yesPct}¢</button>
-                  <button type="button" className="vbet no" id="vBetNo">Buy NO · {noPct}¢</button>
-                </div>
               </div>
 
-              <div className="analysis-body bento-layout">
-                <div className="analysis-left bento-column-main">
+              <div className="analysis-body bento-layout analysis-grid-4">
+                <div className="analysis-cell analysis-top-left">
                   <div className="bento-card bento-signals">
                     <div className="analysis-section-head">
                       <div className="analysis-section-title">Core signal breakdown</div>
@@ -706,13 +701,20 @@ function App() {
                         const ic = analysisResult.integrity_res?.components
                         const iCls = analysisResult.integrity_res?.score && analysisResult.integrity_res.score < 0.3 ? 'bad' : analysisResult.integrity_res?.score && analysisResult.integrity_res.score < 0.6 ? 'ok' : 'good'
                         const iAns = analysisResult.integrity_res?.status ?? ''
-                        const iDesc = `Score ${((analysisResult.integrity_res?.score ?? 0) * 100).toFixed(0)}% · Analysis of 5 risk vectors.`
+                        const iDesc = `Score ${((analysisResult.integrity_res?.score ?? 0) * 100).toFixed(0)}% · Analysis of risk vectors.`
+                        const healthBlurb = (() => {
+                          const s = (iAns || '').toLowerCase()
+                          if (s.includes('healthy')) return 'Low risk of manipulation. Order flow looks normal and no single actor dominates—fair conditions for trading.'
+                          if (s.includes('volatile')) return 'Moderate risk. Some concentration or unusual activity; treat signals with a bit more caution.'
+                          if (s.includes('manipulation')) return 'High risk. Heavy whale influence or suspicious patterns—use extra caution before sizing in.'
+                          return ''
+                        })()
                         return (
                           <div className={`tile ${iCls}`} id="tile1">
-                            <div className="tile-icon">🛡️</div>
                             <div className="tile-q">Is the market healthy?</div>
                             <div className={`tile-answer ${iCls}`} id="t1ans">{iAns}</div>
                             <div className="tile-desc" id="t1desc">{iDesc}</div>
+                            {healthBlurb && <div className="tile-blurb" id="t1blurb">{healthBlurb}</div>}
                             <div className="tile-bars">
                               <div className="tbar-row"><span className="tbar-name">Whale</span><div className="tbar-track"><div className="tbar-fill" style={{ width: `${((ic?.whale_risk ?? 0) * 100).toFixed(0)}%`, background: 'var(--lime)' }} /></div><span className="tbar-val">{(ic?.whale_risk ?? 0).toFixed(2)}</span></div>
                               <div className="tbar-row"><span className="tbar-name">Flip</span><div className="tbar-track"><div className="tbar-fill" style={{ width: `${((ic?.flip_risk ?? 0) * 100).toFixed(0)}%`, background: 'var(--lime)' }} /></div><span className="tbar-val">{(ic?.flip_risk ?? 0).toFixed(2)}</span></div>
@@ -723,12 +725,25 @@ function App() {
                       })()}
                     </div>
                   </div>
+                </div>
 
+                <div className="analysis-cell analysis-top-right">
+                  <div className="chart-card bento-card bento-chart">
+                    <div className="chart-header">
+                      <div><div className="chart-title">Price over time</div><div className="chart-sub">Implied YES probability · 5-min intervals · All-time</div></div>
+                    </div>
+                    <div className="chart-wrap">
+                      <PriceChartSVG priceSeries={analysisResult.price_series ?? []} currentPct={yesPct} />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="analysis-cell analysis-bottom-left">
                   {walletIntel && (
                     <div className="wallet-intel-card bento-card bento-wallet">
                       <div className="wi-header">
                         <div className="wi-header-left">
-                          <div className="wi-label">🧠 Wallet Intel</div>
+                          <div className="wi-label">Wallet Intel</div>
                           <div className={`wi-headline lean-${walletIntel.lean}`} id="wiHeadline">
                             {walletIntel.lean === 'yes' && 'Smart money leaning YES'}
                             {walletIntel.lean === 'no' && 'Smart money leaning NO'}
@@ -745,21 +760,49 @@ function App() {
                           <div className={`wi-lean-dir ${walletIntel.lean}`} id="wiLeanDir">{walletIntel.lean === 'split' ? '~SPLIT' : walletIntel.lean.toUpperCase()}</div>
                         </div>
                       </div>
-                      <div className="wi-dot-chart">
-                        <div className="wi-dot-chart-label">Where smart wallets stand</div>
-                        <div className="dot-chart-wrap">
-                          <div className="dot-chart-axis" id="dotAxis">
-                            <div className="dot-chart-track" />
-                            <div className="dot-chart-ticks">
-                              {[10, 30, 50, 70, 90].map((p) => (
-                                <div key={p}><div className="tick-line" style={{ left: `${p}%` }} /><div className="tick-lbl" style={{ left: `${p}%` }}>{p}%</div></div>
-                              ))}
-                            </div>
-                            {walletIntel.wallets.map((wlt, i) => (
-                              <div key={wlt.addr} className={`wallet-dot ${wlt.side}`} style={{ left: `${wlt.belief}%` }} title={`${wlt.addr} · ${wlt.belief}% YES`}>{i + 1}</div>
-                            ))}
-                          </div>
-                        </div>
+                      <div className="wi-distribution">
+                        <div className="wi-distribution-label">Where top wallets stand (YES belief)</div>
+                        {(() => {
+                          const bins = 10
+                          const binCounts = Array.from({ length: bins }, () => 0)
+                          walletIntel.wallets.forEach((w) => {
+                            const bin = Math.min(bins - 1, Math.floor((w.belief ?? 0) / (100 / bins)))
+                            binCounts[bin] += 1
+                          })
+                          const maxCount = Math.max(1, ...binCounts)
+                          const peakBin = binCounts.indexOf(maxCount)
+                          const peakStart = peakBin * 10
+                          const peakEnd = peakStart + 10
+                          const summary = maxCount === 0 ? 'No data' : `Most at ${peakStart}–${peakEnd}% YES`
+                          return (
+                            <>
+                              <div className="wi-distribution-bars-wrap">
+                                <div className="wi-distribution-bars">
+                                  {binCounts.map((count, i) => (
+                                    <div
+                                      key={i}
+                                      className="wi-distribution-bar"
+                                      style={{
+                                        width: `${100 / bins}%`,
+                                        height: `${maxCount === 0 ? 0 : (count / maxCount) * 100}%`,
+                                      }}
+                                      title={`${i * 10}-${(i + 1) * 10}% YES: ${count} wallet${count !== 1 ? 's' : ''}`}
+                                    />
+                                  ))}
+                                </div>
+                              </div>
+                              <div className="wi-distribution-axis">
+                                <div className="wi-distribution-track" />
+                                <div className="wi-distribution-labels">
+                                  {[0, 25, 50, 75, 100].map((p) => (
+                                    <span key={p} className="wi-distribution-tick" style={{ left: `${p}%` }}>{p}%</span>
+                                  ))}
+                                </div>
+                              </div>
+                              <div className="wi-distribution-summary">{summary}</div>
+                            </>
+                          )
+                        })()}
                       </div>
                       <div className="wi-divergence">
                         <div className="wi-div-label">Divergence among top wallets</div>
@@ -778,12 +821,12 @@ function App() {
                       <div className="wi-wallets">
                         <div className="wi-wallets-label">
                           Top wallets <span style={{ color: 'var(--text3)', fontWeight: 500 }}>(by accuracy)</span>
-                          <span className="wi-expand-btn" id="wiExpandBtn" onClick={() => setWalletsExpanded((x) => !x)} role="button" tabIndex={0}>{walletsExpanded ? 'Show less ↑' : 'Show all ↓'}</span>
+                          <span className="wi-expand-btn" id="wiExpandBtn" onClick={() => setWalletsExpanded((x) => !x)} role="button" tabIndex={0}>{walletsExpanded ? 'Show less' : 'Show all'}</span>
                         </div>
                         <div id="walletList">
                           {(walletsExpanded ? walletIntel.wallets : walletIntel.wallets.slice(0, 3)).map((wlt, i) => (
                             <div key={wlt.addr} className="wallet-row">
-                              <div className={`wallet-avatar s${(i % 5) + 1}`}>{wlt.label.includes('#') ? (wlt.label.replace(/\D/g, '') || '?') : '🏆'}</div>
+                              <div className={`wallet-avatar s${(i % 5) + 1}`}>{wlt.label.includes('#') ? (wlt.label.replace(/\D/g, '') || '?') : '#'}</div>
                               <div className="wallet-info">
                                 <div className="wallet-addr">{wlt.label} · <span style={{ fontSize: 10, color: 'var(--text3)' }}>{wlt.addr}</span></div>
                                 <div className="wallet-stats">{wlt.rank} · {wlt.vol} vol {wlt.badge && <span className={`wallet-badge badge-${wlt.badge}`}>{wlt.badgeLbl}</span>}</div>
@@ -798,23 +841,9 @@ function App() {
                       </div>
                     </div>
                   )}
-
-                  <div className="chart-card bento-card bento-chart">
-                    <div className="analysis-section-head">
-                      <div className="analysis-section-title">Market activity</div>
-                      <div className="analysis-section-sub">Price path and latest executed trades.</div>
-                    </div>
-                    <div className="chart-header">
-                      <div><div className="chart-title">Price over time</div><div className="chart-sub">Implied YES probability · 5-min intervals · All-time</div></div>
-                    </div>
-                    <div className="chart-wrap">
-                      <PriceChartSVG priceSeries={analysisResult.price_series ?? []} currentPct={yesPct} />
-                    </div>
-                  </div>
-
                 </div>
 
-                <div className="analysis-right bento-column-side">
+                <div className="analysis-cell analysis-bottom-right">
                   <div className="chat-card bento-card bento-chat">
                     <div className="chat-header">
                       <div className="chat-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -850,7 +879,7 @@ function App() {
                         onChange={(e) => setChatInput(e.target.value)}
                         onKeyDown={(e) => e.key === 'Enter' && sendMsg()}
                       />
-                      <button type="button" className="send-btn" onClick={sendMsg}>↑</button>
+                      <button type="button" className="send-btn" onClick={sendMsg} aria-label="Send">Send</button>
                     </div>
                   </div>
                 </div>
@@ -903,7 +932,6 @@ function App() {
                     const iDesc = `Score ${(analysisResult.integrity_res?.score ?? 0) * 100}%`
                     return (
                       <div className={`tile ${iCls}`} style={{ flex: 1, minWidth: 200 }}>
-                        <div className="tile-icon">🛡️</div>
                         <div className="tile-q">Market Health</div>
                         <div className={`tile-answer ${iCls}`}>{iAns}</div>
                         <div className="tile-desc">{iDesc}</div>
@@ -918,7 +946,6 @@ function App() {
                     const sDesc = `Informed ${(inf?.informed_score ?? 0) * 100}%, Whale ${(inf?.whale_score ?? 0) * 100}%`
                     return (
                       <div className={`tile ${infCls}`} style={{ flex: 1, minWidth: 200 }}>
-                        <div className="tile-icon">🧠</div>
                         <div className="tile-q">Who's Trading?</div>
                         <div className={`tile-answer ${infCls}`}>{sAns}</div>
                         <div className="tile-desc">{sDesc}</div>
@@ -933,7 +960,6 @@ function App() {
                     const cDesc = `Quality ${(cq * 100).toFixed(0)}%`
                     return (
                       <div className={`tile ${confCls}`} style={{ flex: 1, minWidth: 200 }}>
-                        <div className="tile-icon">🎯</div>
                         <div className="tile-q">Signal Strength</div>
                         <div className={`tile-answer ${confCls}`}>{cAns}</div>
                         <div className="tile-desc">{cDesc}</div>
