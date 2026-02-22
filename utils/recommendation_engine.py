@@ -30,7 +30,7 @@ def get_recommendation(integrity_res, info_res, conf_res):
 
     # 3. Opportunity Scoring
     # If Informed Activity is detected and Integrity is Healthy
-    if "Informed" in info_type and health_score > 0.7:
+    if "Informed" in info_type and health_score > 0.6:
         if prob < 0.3:
             return {
                 "action": "STRONG BUY",

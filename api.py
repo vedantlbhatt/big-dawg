@@ -265,8 +265,10 @@ def get_markets(limit: int = 200, query: str = None, timeout: int = 8):
                     conn.close()
                     
                     # Build lookup dictionary
+                    # Build lookup dictionary (convert Series to dict and handle NaNs)
                     for _, r in sdf.iterrows():
-                        scout_data[r['slug']] = r
+                        scout_row = r.to_dict()
+                        scout_data[r['slug']] = {k: (v if pd.notna(v) else None) for k, v in scout_row.items()}
                     
                     # Cache for 15 minutes
                     set_cached_scout("all", scout_data)
@@ -288,17 +290,17 @@ def get_markets(limit: int = 200, query: str = None, timeout: int = 8):
             "slug": slug,
             "volume": float(r["volume"]) if r.get("volume") is not None else 0,
             "conditionId": str(r["conditionId"]),
-            "trust_score": int(scout['opportunity_score'] * 100) if scout is not None else None,
-            "integrity_status": scout['integrity_status'] if scout is not None else None,
-            "classification": scout['classification'] if scout is not None else None,
-            "yes_vol": scout['yes_val'] if scout is not None else 0,
-            "no_vol": scout['no_val'] if scout is not None else 0,
-            "wallet_score": scout['wallet_score'] if scout is not None else 0,
-            "integrity_score": scout['integrity_score'] if scout is not None else 0,
-            "conf_score": scout['conf_score'] if scout is not None else 0,
+            "trust_score": r.get("trust_score") if pd.notna(r.get("trust_score")) else (int(scout['opportunity_score'] * 100) if scout is not None and isinstance(scout, dict) and pd.notna(scout.get('opportunity_score')) else None),
+            "integrity_status": scout['integrity_status'] if scout is not None and isinstance(scout, dict) else None,
+            "classification": scout['classification'] if scout is not None and isinstance(scout, dict) else None,
+            "yes_vol": scout['yes_val'] if scout is not None and isinstance(scout, dict) and pd.notna(scout.get('yes_val')) else 0,
+            "no_vol": scout['no_val'] if scout is not None and isinstance(scout, dict) and pd.notna(scout.get('no_val')) else 0,
+            "wallet_score": scout['wallet_score'] if scout is not None and isinstance(scout, dict) and pd.notna(scout.get('wallet_score')) else 0,
+            "integrity_score": scout['integrity_score'] if scout is not None and isinstance(scout, dict) and pd.notna(scout.get('integrity_score')) else 0,
+            "conf_score": scout['conf_score'] if scout is not None and isinstance(scout, dict) and pd.notna(scout.get('conf_score')) else 0,
             "yes_label": str(r.get("yes_label", "YES")),
             "no_label": str(r.get("no_label", "NO")),
-            "current_price": float(r.get("current_price", 0.5)),
+            "current_price": float(r.get("current_price", 0.5)) if pd.notna(r.get("current_price")) else 0.5,
         })
     
     print(f"✓ Returning {len(rows)} markets")

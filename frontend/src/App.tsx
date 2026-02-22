@@ -9,8 +9,8 @@ const API_BASE = import.meta.env.VITE_API_URL || ''
 const RING_CIRCUMFERENCE = 364.4
 
 function trustClass(score: number): 'trust' | 'caution' | 'risk' {
-  if (score >= 70) return 'trust'
-  if (score >= 50) return 'caution'
+  if (score >= 60) return 'trust'
+  if (score >= 40) return 'caution'
   return 'risk'
 }
 
@@ -495,9 +495,8 @@ function App() {
 
   const totalV = (analysisResult?.yes_vol || 0) + (analysisResult?.no_vol || 0)
   const sentimentYesPct = totalV > 0
-    ? Math.round((analysisResult?.yes_vol || 0) / totalV * 100)
-    : yesPct
-  const sentimentNoPct = 100 - sentimentYesPct
+    ? Math.round((analysisResult?.yes_vol || 0) / (totalV || 1) * 100)
+    : 50 // Balanced fallback if no volume data yet
   const rec = analysisResult?.recommendation
   const aiRecommendationText = rec
     ? `${rec.action}${rec.action === 'HOLD / NEUTRAL' ? ' — no strong edge yet.' : ''}`
