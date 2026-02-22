@@ -22,7 +22,7 @@ from pydantic import BaseModel
 
 from utils.market_loader import fetch_markets
 from utils.data_loader import get_wallet_analysis
-from utils.fetch_data import fetch_trades
+from utils.fetch_data import fetch_trades, calculate_volume_split
 from utils.cache_manager import get_cached_scout, set_cached_scout
 from utils.analysis_timer import analysis_timer, format_time_stat
 from confidence_layer.confidence import confidence_metrics
@@ -241,7 +241,7 @@ def get_markets(limit: int = 200, query: str = None, timeout: int = 8):
                     conn = sqlite3.connect("data/scout.sqlite")
                     conn.execute("PRAGMA query_only = ON")
                     sdf = pd.read_sql_query(
-                        "SELECT slug, opportunity_score, integrity_status, classification FROM market_scores LIMIT 500",
+                        "SELECT * FROM market_scores LIMIT 500",
                         conn
                     )
                     conn.close()
@@ -273,6 +273,14 @@ def get_markets(limit: int = 200, query: str = None, timeout: int = 8):
             "trust_score": int(scout['opportunity_score'] * 100) if scout is not None else None,
             "integrity_status": scout['integrity_status'] if scout is not None else None,
             "classification": scout['classification'] if scout is not None else None,
+            "yes_vol": scout['yes_val'] if scout is not None else 0,
+            "no_vol": scout['no_val'] if scout is not None else 0,
+            "wallet_score": scout['wallet_score'] if scout is not None else 0,
+            "integrity_score": scout['integrity_score'] if scout is not None else 0,
+            "conf_score": scout['conf_score'] if scout is not None else 0,
+            "yes_label": str(r.get("yes_label", "YES")),
+            "no_label": str(r.get("no_label", "NO")),
+            "current_price": float(r.get("current_price", 0.5)),
         })
     
     print(f"✓ Returning {len(rows)} markets")
@@ -280,7 +288,7 @@ def get_markets(limit: int = 200, query: str = None, timeout: int = 8):
 
 
 @app.post("/api/scout")
-def run_scout_task(limit: int = 10):
+def run_scout_task(limit: int = 40):
     """Trigger a new scan of markets from the backend."""
     from utils.market_scout import scout_markets
     try:
@@ -322,7 +330,7 @@ def analyze_market(req: AnalyzeRequest):
             analysis_start = time.time()
             
             # Fetch trade data with timeout - optimized fetch
-            trades_df = fetch_trades(target, max_trades=1500, timeout=12)  # Reduced from 2000
+            trades_df = fetch_trades(target, max_trades=2000, timeout=12) 
             if trades_df.empty:
                 result_container["error"] = "No trade data found for this market"
                 return
@@ -332,9 +340,35 @@ def analyze_market(req: AnalyzeRequest):
             # Use recent trades for faster processing (most recent 1000 trades are most relevant)
             analysis_trades = trades_df.tail(1000) if len(trades_df) > 1000 else trades_df
             
-            # Resample price for confidence
+            # Try to resolve yes/no labels from metadata if available
+            yes_label = "YES"
+            no_label = "NO"
+            if not analysis_trades.empty:
+                try:
+                    res = requests.get(GAMMA_URL, params={"slug": target}, timeout=5)
+                    data = res.json()
+                    if isinstance(data, list) and len(data) > 0:
+                        outcomes_raw = data[0].get("outcomes")
+                        if outcomes_raw and isinstance(outcomes_raw, str):
+                            import json
+                            outcomes = json.loads(outcomes_raw)
+                            if outcomes:
+                                yes_label = outcomes[0]
+                                no_label = outcomes[1] if len(outcomes) > 1 else "NO"
+                except Exception:
+                    pass
+
+            # NORMALIZATION: Ensure all prices reflect the 'YES' side (probability)
+            # Only do this ONCE after labels are resolved to avoid double-inversion
+            from utils.fetch_data import normalize_trade_prices
+            analysis_trades = normalize_trade_prices(analysis_trades, yes_label=yes_label)
+
+            # Recalculate price series and wallet summary on normalized data
             price_series = analysis_trades.set_index("timestamp")["price"].resample("5min").last().ffill()
             wallet_summary = get_wallet_analysis(analysis_trades)
+
+            # Calculate volume split for sync
+            yes_vol, no_vol = calculate_volume_split(trades_df, yes_label=yes_label, no_label=no_label)
             
             # Run master logic engine
             master_res = master_logic_engine(analysis_trades, price_series, wallet_summary)
@@ -416,6 +450,9 @@ def analyze_market(req: AnalyzeRequest):
                 },
                 "recommendation": recommendation,
                 "wallet_intel": wallet_intel,
+                "yes_vol": yes_vol,
+                "no_vol": no_vol,
+                "current_price": float(yes_vol / (yes_vol + no_vol + 1e-9)) if (yes_vol + no_vol) > 0 else 0.5, # Fallback, but App uses this for display sometimes
                 "price_series": price_list,
                 "trades": trades_list,
                 "trades_count": len(analysis_trades),

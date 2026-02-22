@@ -13,6 +13,54 @@ function trustClass(score: number): 'trust' | 'caution' | 'risk' {
   return 'risk'
 }
 
+const RadarChartSVG = ({ scores, size = 60 }: { scores: { wallet: number; integrity: number; info: number; conf: number }; size?: number }) => {
+  const center = size / 2;
+  const radius = (size / 2) - 12;
+
+  // Axes: 0: Top (Wallet), 1: Right (Integrity), 2: Bottom (Info), 3: Left (Quality)
+  const points = [
+    { x: center, y: center - radius * (scores.wallet || 0) },
+    { x: center + radius * (scores.integrity || 0), y: center },
+    { x: center, y: center + radius * (scores.info || 0) },
+    { x: center - radius * (scores.conf || 0), y: center },
+  ];
+
+  const polygonPoints = points.map(p => `${p.x},${p.y}`).join(' ');
+  const labelDist = radius + 6;
+  const labels = [
+    { text: 'Wal', x: center, y: center - labelDist },
+    { text: 'Int', x: center + labelDist + 4, y: center + 3 },
+    { text: 'Inf', x: center, y: center + labelDist + 6 },
+    { text: 'Qual', x: center - labelDist - 4, y: center + 3 }
+  ];
+
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ overflow: 'visible' }}>
+      {/* Background Grid */}
+      <circle cx={center} cy={center} r={radius} fill="none" stroke="var(--border2)" strokeWidth="0.5" strokeDasharray="2,2" />
+      <line x1={center} y1={center - radius} x2={center} y2={center + radius} stroke="var(--border2)" strokeWidth="0.5" strokeDasharray="1,1" />
+      <line x1={center - radius} y1={center} x2={center + radius} y2={center} stroke="var(--border2)" strokeWidth="0.5" strokeDasharray="1,1" />
+
+      {/* Radar Shape */}
+      <polygon
+        points={polygonPoints}
+        fill="rgba(185, 247, 81, 0.25)"
+        stroke="var(--lime)"
+        strokeWidth="2"
+        strokeLinejoin="round"
+      />
+      {/* Dots */}
+      {points.map((p, i) => (
+        <circle key={i} cx={p.x} cy={p.y} r="2.5" fill="var(--lime)" />
+      ))}
+      {/* Labels if size large */}
+      {size > 100 && labels.map((l, i) => (
+        <text key={i} x={l.x} y={l.y} textAnchor="middle" fontSize="7" fontWeight="900" fill="var(--text3)" style={{ textAnchor: 'middle', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{l.text}</text>
+      ))}
+    </svg>
+  );
+};
+
 function PriceChartSVG({ priceSeries, currentPct }: { priceSeries: { timestamp: string; price: number }[]; currentPct: number }) {
   const w = 600
   const h = 160
@@ -102,7 +150,7 @@ function App() {
   const [selectedMarket, setSelectedMarket] = useState<Market | null>(null)
   const [showInfoCard, setShowInfoCard] = useState(false)
   const [debounceTimer, setDebounceTimer] = useState<ReturnType<typeof setTimeout> | null>(null)
-  const [searchCancellable, setSearchCancellable] = useState(false)
+  const [visibleCount, setVisibleCount] = useState(20)
   const replyIdx = useRef(0)
 
   // Fetch global stats on mount
@@ -117,15 +165,14 @@ function App() {
   // Debounced market fetching with cancellation support
   useEffect(() => {
     if (!API_BASE || page !== 'markets') return
-    
+
     // Clear previous timer (but keep loading state if fetch is in progress)
     if (debounceTimer) clearTimeout(debounceTimer)
-    
+
     // Set new timer
     setMarketsError(null)
     const timer = setTimeout(() => {
       setMarketsLoading(true)
-      setSearchCancellable(true)
       fetchMarkets(searchQuery || undefined)
         .then((list) => {
           setApiMarkets(list)
@@ -144,12 +191,11 @@ function App() {
         })
         .finally(() => {
           setMarketsLoading(false)
-          setSearchCancellable(false)
         })
     }, 300) // 300ms debounce
-    
+
     setDebounceTimer(timer)
-    
+
     return () => {
       clearTimeout(timer)
       // Don't clear searchCancellable here - let the fetch finish and cleanup naturally
@@ -172,7 +218,6 @@ function App() {
   const handleCancelSearch = () => {
     cancelMarketsFetch()
     setMarketsLoading(false)
-    setSearchCancellable(false)
     setMarketsError(null)  // Clear error immediately instead of showing "Search cancelled"
   }
 
@@ -222,6 +267,12 @@ function App() {
   const trustCls = trustClass(trustScore)
   const yesPct = Math.round((analysisResult?.conf_res?.probability ?? 0) * 100)
   const noPct = 100 - yesPct
+
+  const totalV = (analysisResult?.yes_vol || 0) + (analysisResult?.no_vol || 0)
+  const sentimentYesPct = totalV > 0
+    ? Math.round((analysisResult?.yes_vol || 0) / totalV * 100)
+    : yesPct
+  const sentimentNoPct = 100 - sentimentYesPct
   const rec = analysisResult?.recommendation
   const tipHtml = rec
     ? `<b>AI Recommendation:</b> ${rec.action}. ${rec.reasoning}`
@@ -309,8 +360,8 @@ function App() {
             />
           </div>
         )}
-        <div className="bets-grid" style={{ padding: '0 28px 60px' }} id="marketsGrid">
-          {apiMarkets.map((m) => (
+        <div className="bets-grid" style={{ padding: '0 28px 20px' }} id="marketsGrid">
+          {apiMarkets.slice(0, visibleCount).map((m) => (
             <div
               key={m.conditionId + m.slug}
               className="bet-card"
@@ -324,12 +375,29 @@ function App() {
                   <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '.07em', display: 'block', marginBottom: 4 }}>{m.event_title}</span>
                   {m.question}
                 </div>
-                {m.trust_score != null && (
-                  <div className="trust-mini">
-                    <div className={`tmini-num ${trustClass(m.trust_score)}`}>{m.trust_score}</div>
-                    <div className={`tmini-lbl ${trustClass(m.trust_score)}`}>{trustClass(m.trust_score) === 'trust' ? 'Trusted' : trustClass(m.trust_score) === 'caution' ? 'Caution' : 'Risky'}</div>
-                  </div>
-                )}
+                <div style={{ flex: 1 }}>
+                  {(() => {
+                    const totalV = (m.yes_vol || 0) + (m.no_vol || 0);
+                    // Use canonical price fallback for parity
+                    const yesPct = totalV > 0
+                      ? Math.round((m.yes_vol || 0) / (totalV || 1) * 100)
+                      : Math.round((m.current_price ?? 0.5) * 100);
+                    const noPct = 100 - yesPct;
+                    const yesLab = m.yes_label && !['YES', 'PURCHASE YES'].includes(m.yes_label.toUpperCase()) ? m.yes_label.slice(0, 8) : 'YES';
+                    return (
+                      <div className="trust-mini" style={{ width: 100, gap: 4 }}>
+                        <div style={{ width: '100%', height: 4, background: 'var(--red)', borderRadius: 2, overflow: 'hidden', display: 'flex' }}>
+                          <div style={{ width: `${yesPct}%`, height: '100%', background: 'var(--lime)' }} />
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', fontSize: 9, fontWeight: 800 }}>
+                          <span style={{ color: 'var(--lime)', letterSpacing: '-0.02em' }}>{yesLab.toUpperCase()} {yesPct}%</span>
+                          <span style={{ color: 'var(--red)', letterSpacing: '-0.02em' }}>NO {noPct}%</span>
+                        </div>
+                        <div className="tmini-lbl" style={{ fontSize: 7, marginTop: 0 }}>{totalV > 0 ? 'Volume Sentiment' : 'Price Sentiment'}</div>
+                      </div>
+                    );
+                  })()}
+                </div>
               </div>
               <div className="bet-foot">
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -345,6 +413,18 @@ function App() {
             </div>
           ))}
         </div>
+
+        {apiMarkets.length > visibleCount && (
+          <div style={{ display: 'flex', justifyContent: 'center', padding: '0 0 60px' }}>
+            <button
+              className="land-cta"
+              onClick={() => setVisibleCount(prev => prev + 20)}
+              style={{ padding: '12px 32px', fontSize: 14 }}
+            >
+              See More Markets ↓
+            </button>
+          </div>
+        )}
       </div>
 
       {/* ANALYSIS */}
@@ -373,22 +453,33 @@ function App() {
                   <div className="verdict-mkt-emoji">🗳</div>
                   <div className="verdict-mkt-name" id="vName">{displayMarketName}</div>
                 </div>
-                <div className="trust-ring">
-                  <svg viewBox="0 0 148 148">
-                    <circle className="ring-bg" cx="74" cy="74" r="58" />
-                    <circle
-                      className={`ring-fill ${trustCls}`}
-                      id="ringFill"
-                      cx="74"
-                      cy="74"
-                      r="58"
-                      strokeDasharray={RING_CIRCUMFERENCE}
-                      strokeDashoffset={RING_CIRCUMFERENCE - (RING_CIRCUMFERENCE * trustScore) / 100}
-                    />
-                  </svg>
-                  <div className="ring-center">
-                    <div className={`ring-num ${trustCls}`} id="ringNum">{trustScore}</div>
-                    <div className="ring-word">Trust Score</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 40, justifyContent: 'center', marginBottom: 24 }}>
+                  <div className="trust-ring">
+                    <svg viewBox="0 0 148 148">
+                      <circle className="ring-bg" cx="74" cy="74" r="58" />
+                      <circle
+                        className={`ring-fill ${trustCls}`}
+                        id="ringFill"
+                        cx="74"
+                        cy="74"
+                        r="58"
+                        strokeDasharray={RING_CIRCUMFERENCE}
+                        strokeDashoffset={RING_CIRCUMFERENCE - (RING_CIRCUMFERENCE * trustScore) / 100}
+                      />
+                    </svg>
+                    <div className="ring-center">
+                      <div className={`ring-num ${trustCls}`} id="ringNum">{trustScore}</div>
+                      <div className="ring-word">Trust Score</div>
+                    </div>
+                  </div>
+
+                  <div className="radar-large">
+                    <RadarChartSVG size={160} scores={{
+                      wallet: analysisResult.master_res?.wallet_intelligence?.score || 0,
+                      integrity: analysisResult.integrity_res?.score || 0,
+                      info: analysisResult.info_res?.score || 0,
+                      conf: analysisResult.conf_res?.confidence_score || 0
+                    }} />
                   </div>
                 </div>
                 <div className="verdict-line" id="vLine">
@@ -397,11 +488,13 @@ function App() {
                 <div className="verdict-desc" id="vDesc">
                   {rec?.reasoning ?? analysisResult.integrity_res?.status ?? ''}
                 </div>
-                <div className="prob-row">
-                  <div className="prob-block"><div className="prob-pct yes" id="vYes">{yesPct}%</div><div className="prob-out">YES</div></div>
+                <div className="prob-row" style={{ position: 'relative', marginTop: 12 }}>
+                  <div style={{ position: 'absolute', top: -14, left: 0, width: '100%', textAlign: 'center', fontSize: 9, fontWeight: 800, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '.08em' }}>Volume Sentiment (Trade Weighting)</div>
+                  <div className="prob-block"><div className="prob-pct yes" id="vYes">{sentimentYesPct}%</div><div className="prob-out">YES</div></div>
                   <div className="prob-sep" /><div className="prob-vs">vs</div><div className="prob-sep" />
-                  <div className="prob-block"><div className="prob-pct no" id="vNo">{noPct}%</div><div className="prob-out">NO</div></div>
+                  <div className="prob-block"><div className="prob-pct no" id="vNo">{sentimentNoPct}%</div><div className="prob-out">NO</div></div>
                 </div>
+                <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 8 }}>Market Price (Implied Probability)</div>
                 <div className="verdict-btns">
                   <button type="button" className="vbet yes" id="vBetYes">Buy YES · {yesPct}¢</button>
                   <button type="button" className="vbet no" id="vBetNo">Buy NO · {noPct}¢</button>
@@ -657,7 +750,6 @@ function App() {
                 <div className="tiles-row" style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
                   {/* Integrity Tile */}
                   {(() => {
-                    const ic = analysisResult.integrity_res?.components
                     const iCls = analysisResult.integrity_res?.score && analysisResult.integrity_res.score < 0.3 ? 'bad' : analysisResult.integrity_res?.score && analysisResult.integrity_res.score < 0.6 ? 'ok' : 'good'
                     const iAns = analysisResult.integrity_res?.status ?? ''
                     const iDesc = `Score ${(analysisResult.integrity_res?.score ?? 0) * 100}%`

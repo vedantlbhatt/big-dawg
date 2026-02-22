@@ -91,7 +91,7 @@ def init_scout_db():
     if os.path.exists(db_path):
         conn = sqlite3.connect(db_path)
         try:
-            pd.read_sql_query("SELECT event_title FROM market_scores LIMIT 1", conn)
+            pd.read_sql_query("SELECT event_title, wallet_score FROM market_scores LIMIT 1", conn)
             conn.close()
         except Exception:
             conn.close()
@@ -109,19 +109,23 @@ def init_scout_db():
             classification TEXT,
             yes_val REAL DEFAULT 0,
             no_val REAL DEFAULT 0,
+            wallet_score REAL DEFAULT 0,
+            integrity_score REAL DEFAULT 0,
+            info_score REAL DEFAULT 0,
+            conf_score REAL DEFAULT 0,
             last_scanned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
     conn.commit()
     conn.close()
 
-def save_scout_result(slug, score, integrity, classification, event_title=None, yes_val=0, no_val=0):
+def save_scout_result(slug, score, integrity, classification, event_title=None, yes_val=0, no_val=0, wallet_score=0, integrity_score=0, info_score=0, conf_score=0):
     conn = sqlite3.connect("data/scout.sqlite")
     cursor = conn.cursor()
     cursor.execute("""
-        INSERT OR REPLACE INTO market_scores (slug, event_title, opportunity_score, integrity_status, classification, yes_val, no_val, last_scanned_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-    """, (slug, event_title, score, integrity, classification, yes_val, no_val))
+        INSERT OR REPLACE INTO market_scores (slug, event_title, opportunity_score, integrity_status, classification, yes_val, no_val, wallet_score, integrity_score, info_score, conf_score, last_scanned_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+    """, (slug, event_title, score, integrity, classification, yes_val, no_val, wallet_score, integrity_score, info_score, conf_score))
     conn.commit()
     conn.close()
 
