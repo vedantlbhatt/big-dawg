@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { Activity, Wallet, Trophy, Brain, BarChart3 } from "lucide-react";
 
 const css = `
 @import url('https://fonts.googleapis.com/css2?family=Figtree:wght@400;600;700;800;900&family=Instrument+Serif:ital@0;1&display=swap');
@@ -126,6 +127,7 @@ body::after {
 .sp-node.lit .sp-node-dot {
   border-color:var(--lime); background:rgba(185,247,81,.1);
   box-shadow:0 0 16px rgba(185,247,81,.25);
+  color:var(--lime);
 }
 .sp-node-label { font-size:13px; font-weight:600; color:var(--text3); transition:color .3s; }
 .sp-node.lit .sp-node-label { color:var(--text); }
@@ -697,7 +699,7 @@ function Bracket({ height, color = "#b9f751", dir = "right" }: { height: number;
   );
 }
 
-function useInView(threshold = 0.25) {
+function useInView(threshold = 0.25): [React.RefObject<HTMLDivElement | null>, boolean] {
   const ref = useRef<HTMLDivElement>(null);
   const [inView, setInView] = useState(false);
   useEffect(() => {
@@ -910,7 +912,7 @@ export default function LandingPage({
 
       <section id="s0">
         <span className="land-paw">🐾</span>
-        <div className="land-title">Follow the <em>trust</em><br />that bet?</div>
+        <div className="land-title">Do you <em>trust</em><br />that bet?</div>
         <div className="land-sub">We analyze prediction market trades with statistical models to identify high-performing wallets, detect manipulation, and extract real predictive signals, simplifying the noise so you know when to lean in and when to walk away.</div>
         <button type="button" className="land-cta" onClick={onBrowseMarkets}>Browse Markets →</button>
         <div className="land-stats">
@@ -937,25 +939,30 @@ Every market has a number. Behind it are real wallets making real bets. We track
           </div>
           <div className="signal-path reveal">
             {[
-              { icon: "📡", label: "Fetch every trade" },
-              { icon: "👛", label: "Size up each wallet" },
-              { icon: "⭐", label: "Find the winners" },
-              { icon: "🧠", label: "Check smart money lean" },
-              { icon: "📊", label: "Measure agreement" },
-            ].map((node, i) => (
-              <div key={i}>
-                <div className={`sp-node ${litNodes.includes(i) ? "lit" : ""}`}>
-                  <div className="sp-node-dot">{node.icon}</div>
-                  <div className="sp-node-label">{node.label}</div>
-                  <div className="sp-node-num">0{i + 1}</div>
-                </div>
-                {i < 4 && (
-                  <div className={`sp-wire ${litNodes.includes(i) ? "lit" : ""}`}>
-                    {litNodes.includes(i) && <div className="sp-wire-pulse" />}
+              { Icon: Activity, label: "Fetch every trade" },
+              { Icon: Wallet, label: "Size up each wallet" },
+              { Icon: Trophy, label: "Find the winners" },
+              { Icon: Brain, label: "Check smart money lean" },
+              { Icon: BarChart3, label: "Measure agreement" },
+            ].map((node, i) => {
+              const isLit = litNodes.includes(i) || i === 0;
+              return (
+                <div key={i}>
+                  <div className={`sp-node ${isLit ? "lit" : ""}`}>
+                    <div className="sp-node-dot" style={{ color: isLit ? "#b9f751" : "#8888a0" }}>
+                      <node.Icon size={18} strokeWidth={2} stroke="currentColor" style={{ flexShrink: 0 }} />
+                    </div>
+                    <div className="sp-node-label">{node.label}</div>
+                    <div className="sp-node-num">0{i + 1}</div>
                   </div>
-                )}
-              </div>
-            ))}
+                  {i < 4 && (
+                    <div className={`sp-wire ${isLit ? "lit" : ""}`}>
+                      {isLit && <div className="sp-wire-pulse" />}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </div>
         <button type="button" className="dn-arrow" onClick={() => scrollTo("s1")}>
