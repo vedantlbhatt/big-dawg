@@ -137,7 +137,6 @@ const PredictiveAlphaDashboard = ({ data, loading }: { data: PredictiveInsights 
   if (!data || data.error) return null;
 
   const features = Object.entries(data.coefficients).sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]));
-  const isHighConfidence = data.r2 > 0.3;
 
   return (
     <div className="alpha-dashboard">
@@ -294,6 +293,7 @@ function App() {
   const handleAnalyzeMarket = async (m: Market) => {
     setAnalysisError(null)
     setAnalyzing(true)
+    setChatLoading(false)
     setSelectedMarket(m)
     go('analysis')
     try {
@@ -325,7 +325,21 @@ function App() {
           analysisResult.info_res,
           analysisResult.conf_res,
           val,
-          history
+          history,
+          {
+            extraContext: {
+              market_name: analysisResult.market_name,
+              wallet_intel: analysisResult.wallet_intel ?? null,
+              master_res: analysisResult.master_res,
+              recommendation: analysisResult.recommendation ?? null,
+              trades_count: analysisResult.trades_count,
+              current_price: analysisResult.current_price ?? null,
+              yes_vol: analysisResult.yes_vol ?? null,
+              no_vol: analysisResult.no_vol ?? null,
+              price_series_tail: (analysisResult.price_series ?? []).slice(-20),
+              recent_trades: (analysisResult.trades ?? []).slice(-10),
+            },
+          }
         )
         setChatMessages((prev) => [...prev, { role: 'bot', text: response || '' }])
       } catch {
@@ -348,9 +362,9 @@ function App() {
     : yesPct
   const sentimentNoPct = 100 - sentimentYesPct
   const rec = analysisResult?.recommendation
-  const tipHtml = rec
-    ? `<b>AI Recommendation:</b> ${rec.action}. ${rec.reasoning}`
-    : ''
+  const aiRecommendationText = rec
+    ? `${rec.action}${rec.action === 'HOLD / NEUTRAL' ? ' — no strong edge yet.' : ''}`
+    : 'No recommendation yet.'
 
   return (
     <>
@@ -451,30 +465,27 @@ function App() {
                   <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '.07em', display: 'block', marginBottom: 4 }}>{m.event_title}</span>
                   {m.question}
                 </div>
-                <div style={{ flex: 1 }}>
-                  {(() => {
-                    const totalV = (m.yes_vol || 0) + (m.no_vol || 0);
-                    // Use canonical price fallback for parity
-                    const yesPct = totalV > 0
-                      ? Math.round((m.yes_vol || 0) / (totalV || 1) * 100)
-                      : Math.round((m.current_price ?? 0.5) * 100);
-                    const noPct = 100 - yesPct;
-                    const yesLab = m.yes_label && !['YES', 'PURCHASE YES'].includes(m.yes_label.toUpperCase()) ? m.yes_label.slice(0, 8) : 'YES';
-                    return (
-                      <div className="trust-mini" style={{ width: 100, gap: 4 }}>
-                        <div style={{ width: '100%', height: 4, background: 'var(--red)', borderRadius: 2, overflow: 'hidden', display: 'flex' }}>
-                          <div style={{ width: `${yesPct}%`, height: '100%', background: 'var(--lime)' }} />
-                        </div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', fontSize: 9, fontWeight: 800 }}>
-                          <span style={{ color: 'var(--lime)', letterSpacing: '-0.02em' }}>{yesLab.toUpperCase()} {yesPct}%</span>
-                          <span style={{ color: 'var(--red)', letterSpacing: '-0.02em' }}>NO {noPct}%</span>
-                        </div>
-                        <div className="tmini-lbl" style={{ fontSize: 7, marginTop: 0 }}>{totalV > 0 ? 'Volume Sentiment' : 'Price Sentiment'}</div>
-                      </div>
-                    );
-                  })()}
-                </div>
               </div>
+              {(() => {
+                const totalV = (m.yes_vol || 0) + (m.no_vol || 0)
+                const yesPct = totalV > 0
+                  ? Math.round((m.yes_vol || 0) / (totalV || 1) * 100)
+                  : Math.round((m.current_price ?? 0.5) * 100)
+                const noPct = 100 - yesPct
+                const yesLab = m.yes_label && !['YES', 'PURCHASE YES'].includes(m.yes_label.toUpperCase()) ? m.yes_label.slice(0, 8) : 'YES'
+                return (
+                  <div className="trust-mini market-yn-bottom" style={{ width: '100%', gap: 5 }}>
+                    <div style={{ width: '100%', height: 6, marginTop: 4, background: 'var(--red)', borderRadius: 3, overflow: 'hidden', display: 'flex' }}>
+                      <div style={{ width: `${yesPct}%`, height: '100%', background: 'var(--lime)' }} />
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', fontSize: 9, fontWeight: 800 }}>
+                      <span style={{ color: 'var(--lime)', letterSpacing: '-0.02em' }}>{yesLab.toUpperCase()} {yesPct}%</span>
+                      <span style={{ color: 'var(--red)', letterSpacing: '-0.02em' }}>NO {noPct}%</span>
+                    </div>
+                    <div className="tmini-lbl" style={{ fontSize: 7, marginTop: 0 }}>{totalV > 0 ? 'Volume Sentiment' : 'Price Sentiment'}</div>
+                  </div>
+                )
+              })()}
               <div className="bet-foot">
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <span>Vol ${typeof m.volume === 'number' ? m.volume.toLocaleString(undefined, { maximumFractionDigits: 0 }) : m.volume}</span>
@@ -729,7 +740,10 @@ function App() {
                       </div>
                       <div className="ai-tag">AI</div>
                     </div>
-                    <div className="chat-tip" id="chatTip" dangerouslySetInnerHTML={{ __html: tipHtml }} />
+                    <div className="chat-tip" id="chatTip">
+                      <b>AI Recommendation:</b>{' '}
+                      {aiRecommendationText}
+                    </div>
                     <div className="chat-log" id="chatLog">
                       {chatMessages.map((m, i) => (
                         <div key={i} className={`cmsg ${m.role === 'user' ? 'u' : 'b'}`}>
