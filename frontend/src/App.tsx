@@ -62,74 +62,196 @@ const RadarChartSVG = ({ scores, size = 60 }: { scores: { wallet: number; integr
   );
 };
 
+// Light smoothing so the line looks like a regular graph, not step/blocky (Polymarket-style)
+function smoothPrices(prices: number[], window = 3): number[] {
+  if (prices.length < window) return prices
+  const out: number[] = []
+  const half = Math.floor(window / 2)
+  for (let i = 0; i < prices.length; i++) {
+    let sum = 0
+    let count = 0
+    for (let k = i - half; k <= i + half; k++) {
+      if (k >= 0 && k < prices.length) {
+        sum += prices[k]
+        count++
+      }
+    }
+    out.push(sum / count)
+  }
+  return out
+}
+
+// Build smooth cubic Bezier path (Catmull-Rom); use with smoothed data for a fluid line
+function smoothPathThroughPoints(pts: { x: number; y: number }[]): string {
+  if (pts.length < 2) return ''
+  if (pts.length === 2) return `M ${pts[0].x} ${pts[0].y} L ${pts[1].x} ${pts[1].y}`
+  let d = `M ${pts[0].x} ${pts[0].y}`
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = pts[Math.max(0, i - 1)]
+    const p1 = pts[i]
+    const p2 = pts[i + 1]
+    const p3 = pts[Math.min(pts.length - 1, i + 2)]
+    const c1x = p1.x + (p2.x - p0.x) / 6
+    const c1y = p1.y + (p2.y - p0.y) / 6
+    const c2x = p2.x - (p3.x - p1.x) / 6
+    const c2y = p2.y - (p3.y - p1.y) / 6
+    d += ` C ${c1x} ${c1y} ${c2x} ${c2y} ${p2.x} ${p2.y}`
+  }
+  return d
+}
+
+function formatChartDate(ts: string): string {
+  const d = new Date(ts)
+  if (isNaN(d.getTime())) return ts
+  const mon = d.toLocaleDateString('en-US', { month: 'short' })
+  const day = d.getDate()
+  const year = d.getFullYear()
+  const thisYear = new Date().getFullYear()
+  return year !== thisYear ? `${mon} ${day}, ${year}` : `${mon} ${day}`
+}
+
 function PriceChartSVG({ priceSeries, currentPct }: { priceSeries: { timestamp: string; price: number }[]; currentPct: number }) {
+  const svgRef = useRef<SVGSVGElement>(null)
+  const [hovered, setHovered] = useState<{ index: number; x: number; y: number } | null>(null)
+
   const w = 600
   const h = 160
   const padding = { left: 38, right: 22, top: 20, bottom: 20 }
   const plotH = h - padding.top - padding.bottom
   const plotW = w - padding.left - padding.right
 
+  // Normalized Y scale: enforce minimum range so 2% data doesn't fill the whole graph (Polymarket-style)
+  const MIN_RANGE = 0.10 // 10% minimum vertical range
   let minP = 0
-  let maxP = 100
+  let maxP = 1
 
-  if (priceSeries.length >= 2) {
-    const rawMin = Math.min(...priceSeries.map((d) => d.price))
-    const rawMax = Math.max(...priceSeries.map((d) => d.price))
-    const buffer = (rawMax - rawMin) * 0.1 || 0.05
-    minP = Math.max(0, rawMin - buffer)
-    maxP = Math.min(1, rawMax + buffer)
+  // Smoothed prices for drawing (less blocky/static); scale Y from smoothed so line fits
+  const smoothedPrices = priceSeries.length >= 2
+    ? smoothPrices(priceSeries.map((d) => d.price), 5)
+    : []
+  if (priceSeries.length >= 2 && smoothedPrices.length > 0) {
+    const rawMin = Math.min(...smoothedPrices)
+    const rawMax = Math.max(...smoothedPrices)
+    const dataRange = rawMax - rawMin
+    const halfRange = Math.max(dataRange / 2, MIN_RANGE / 2)
+    const center = (rawMin + rawMax) / 2
+    minP = Math.max(0, center - halfRange)
+    maxP = Math.min(1, center + halfRange)
   }
 
   const range = maxP - minP || 1
   const pts = priceSeries.length >= 2
     ? priceSeries.map((d, i) => ({
       x: padding.left + (i / (priceSeries.length - 1)) * plotW,
-      y: padding.top + (1 - (d.price - minP) / range) * plotH
+      y: padding.top + (1 - ((smoothedPrices[i] ?? d.price) - minP) / range) * plotH
     }))
     : []
 
-  const linePath = pts.length >= 2 ? pts.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ') : ''
+  const linePath = smoothPathThroughPoints(pts)
   const areaPath = pts.length >= 2 ? linePath + ` L${pts[pts.length - 1].x},${h} L${pts[0].x},${h} Z` : ''
   const lastX = pts.length >= 2 ? pts[pts.length - 1].x : padding.left
   const lastY = pts.length >= 2 ? pts[pts.length - 1].y : h / 2
 
-  // Dynamic Ticks
+  // Real date labels for X-axis (first, 1/4, 1/2, 3/4, last)
+  const xLabels: { x: number; label: string }[] = []
+  if (priceSeries.length >= 2) {
+    const indices = [0, Math.floor(priceSeries.length * 0.25), Math.floor(priceSeries.length * 0.5), Math.floor(priceSeries.length * 0.75), priceSeries.length - 1]
+    const uniq = [...new Set(indices)]
+    uniq.forEach((i) => {
+      const ts = priceSeries[i]?.timestamp
+      xLabels.push({
+        x: padding.left + (i / (priceSeries.length - 1)) * plotW,
+        label: ts ? formatChartDate(ts) : (i === 0 ? 'Start' : i === priceSeries.length - 1 ? 'Now' : '')
+      })
+    })
+  }
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    const svg = svgRef.current
+    if (!svg || priceSeries.length < 2) return
+    const rect = svg.getBoundingClientRect()
+    const x = ((e.clientX - rect.left) / rect.width) * w
+    const relX = (x - padding.left) / plotW
+    const index = Math.round(relX * (priceSeries.length - 1))
+    const i = Math.max(0, Math.min(index, priceSeries.length - 1))
+    const point = priceSeries[i]
+    const px = padding.left + (i / (priceSeries.length - 1)) * plotW
+    const py = padding.top + (1 - (point.price - minP) / range) * plotH
+    setHovered({ index: i, x: px, y: py })
+  }
+
+  const handleMouseLeave = () => setHovered(null)
+
+  // Dynamic ticks from normalized range
   const ticks = [maxP, maxP - (range * 0.33), maxP - (range * 0.66), minP]
 
+  const displayPoint = hovered !== null ? priceSeries[hovered.index] : null
+
   return (
-    <svg className="price-svg" viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none">
-      <defs>
-        <linearGradient id="ca" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#b9f751" stopOpacity={0.14} />
-          <stop offset="100%" stopColor="#b9f751" stopOpacity={0} />
-        </linearGradient>
-      </defs>
-      <g className="c-grid">
-        {ticks.map((_, i) => (
-          <line key={i} x1="0" y1={padding.top + (i / 3) * plotH} x2="600" y2={padding.top + (i / 3) * plotH} />
-        ))}
-      </g>
-      <g className="c-axis">
-        {ticks.map((t, i) => (
-          <text key={i} x="2" y={padding.top + (i / 3) * plotH + 3}>{Math.round(t * 100)}%</text>
-        ))}
-      </g>
-      <g className="c-axis">
-        <text x="38" y="158">Start</text>
-        <text x="295" y="158">Mid</text>
-        <text x="552" y="158">Now</text>
-      </g>
-      {pts.length >= 2 && (
-        <>
-          <path className="c-area" d={areaPath} />
-          <path className="c-line" d={linePath} />
-          <circle cx={lastX} cy={lastY} r="4" fill="#b9f751" />
-          <circle cx={lastX} cy={lastY} r="9" fill="#b9f751" opacity={0.14} />
-          <rect x={lastX + 4} y={lastY - 10} width="32" height="15" rx="4" fill="rgba(185,247,81,.14)" stroke="rgba(185,247,81,.3)" strokeWidth={0.5} />
-          <text x={lastX + 20} y={lastY - 0.5} textAnchor="middle" fontSize="8" fill="#b9f751" fontFamily="Figtree" fontWeight="700">{currentPct}%</text>
-        </>
-      )}
-    </svg>
+    <div
+      className="price-chart-container"
+      onMouseMove={handleMouseMove}
+      onMouseLeave={handleMouseLeave}
+      style={{ position: 'relative', width: '100%', height: '100%' }}
+    >
+      <svg ref={svgRef} className="price-svg" viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="xMidYMid meet">
+        <defs>
+          <linearGradient id="ca" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#b9f751" stopOpacity={0.14} />
+            <stop offset="100%" stopColor="#b9f751" stopOpacity={0} />
+          </linearGradient>
+        </defs>
+        <g className="c-grid">
+          {ticks.map((_, i) => (
+            <line key={i} x1="0" y1={padding.top + (i / 3) * plotH} x2={w} y2={padding.top + (i / 3) * plotH} />
+          ))}
+        </g>
+        <g className="c-axis">
+          {ticks.map((t, i) => (
+            <text key={i} x="2" y={padding.top + (i / 3) * plotH + 3}>{Math.round(t * 100)}%</text>
+          ))}
+        </g>
+        <g className="c-axis c-axis-time">
+          {xLabels.map(({ x, label }, i) => (
+            <text key={i} x={x} y={h - 4} textAnchor={i === 0 ? 'start' : i === xLabels.length - 1 ? 'end' : 'middle'}>{label}</text>
+          ))}
+        </g>
+        {pts.length >= 2 && (
+          <>
+            <path className="c-area" d={areaPath} />
+            <path className="c-line" d={linePath} />
+            {/* Single prominent point at current value (Polymarket-style); show dot on hover */}
+            {hovered !== null && (
+              <circle cx={pts[hovered.index].x} cy={pts[hovered.index].y} r="4" fill="#b9f751" className="c-dot c-dot-hover" />
+            )}
+            <circle cx={lastX} cy={lastY} r="4" fill="#b9f751" className="c-last" />
+            <circle cx={lastX} cy={lastY} r="9" fill="#b9f751" opacity={0.14} />
+            {displayPoint && hovered && (
+              <g className="c-tooltip">
+                {(() => {
+                  const tw = 48
+                  const th = 20
+                  const tx = hovered.x + 6 > w - padding.right - tw ? hovered.x - tw - 6 : hovered.x + 6
+                  const ty = hovered.y - 12
+                  return (
+                    <>
+                      <rect x={tx} y={ty} width={tw} height={th} rx="6" fill="rgba(20,20,20,.9)" stroke="rgba(185,247,81,.4)" strokeWidth={0.5} />
+                      <text x={tx + tw / 2} y={ty + th / 2 + 0.5} textAnchor="middle" fontSize="10" fill="#b9f751" fontFamily="Figtree" fontWeight="700">{Math.round(displayPoint.price * 100)}%</text>
+                    </>
+                  )
+                })()}
+              </g>
+            )}
+            {!displayPoint && (
+              <>
+                <rect x={lastX + 4} y={lastY - 10} width="32" height="15" rx="4" fill="rgba(185,247,81,.14)" stroke="rgba(185,247,81,.3)" strokeWidth={0.5} />
+                <text x={lastX + 20} y={lastY - 0.5} textAnchor="middle" fontSize="8" fill="#b9f751" fontFamily="Figtree" fontWeight="700">{currentPct}%</text>
+              </>
+            )}
+          </>
+        )}
+      </svg>
+    </div>
   )
 }
 
@@ -362,7 +484,11 @@ function App() {
     }
   }
 
-  const displayMarketName = analysisResult?.market_name ?? ''
+  const marketSlug = analysisResult?.market_name ?? ''
+  const displayMarketName = marketSlug
+    .split('-')
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+    .join(' ')
   const trustScore = Math.round((analysisResult?.master_res?.overall_score ?? analysisResult?.integrity_res?.score ?? 0) * 100)
   const trustCls = trustClass(trustScore)
   const yesPct = Math.round((analysisResult?.conf_res?.probability ?? 0) * 100)
@@ -492,10 +618,10 @@ function App() {
                 </div>
                 {m.classification && (
                   <div className="smart-lean-chip" style={{ background: m.classification.includes('Whale') ? 'var(--purple-dim)' : m.classification.includes('Informed') ? 'var(--lime-dim)' : 'var(--blue-dim)', color: m.classification.includes('Whale') ? 'var(--purple)' : m.classification.includes('Informed') ? 'var(--lime)' : 'var(--blue)' }}>
-                    🧠 {m.classification.split(' ').pop()}
+                    {m.classification.split(' ').pop()}
                   </div>
                 )}
-                <span className="ev-arrow">→</span>
+                <span className="ev-arrow">&rarr;</span>
               </div>
             </div>
           ))}
@@ -508,7 +634,7 @@ function App() {
               onClick={() => setVisibleCount(prev => prev + 20)}
               style={{ padding: '12px 32px', fontSize: 14 }}
             >
-              See More Markets ↓
+              See More Markets
             </button>
           </div>
         )}
@@ -520,7 +646,7 @@ function App() {
           {analyzing && !analysisResult && (
             <div style={{ textAlign: 'center', padding: 60, color: 'var(--text2)' }}>
               <div style={{ fontSize: 18, marginBottom: 20 }}>Running intelligence engines...</div>
-              <div style={{ fontSize: 14, marginBottom: 10 }}>🔍 Analyzing integrity · 🧠 Information layer · 🎯 Confidence metrics</div>
+              <div style={{ fontSize: 14, marginBottom: 10 }}>Analyzing integrity · Information layer · Confidence metrics</div>
             </div>
           )}
           {analysisError && !analysisResult && (
@@ -533,6 +659,7 @@ function App() {
           {analysisResult && (
             <>
               <div className="verdict-hero bento-hero">
+                <h1 className="analysis-page-title" id="analysisMarketTitle">{displayMarketName}</h1>
                 <div className="verdict-meta-pill">
                   Live · Polymarket data · Logic engine
                 </div>
@@ -568,10 +695,6 @@ function App() {
                 </div>
 
                 <div className="verdict-primary bento-card">
-                  <div className="verdict-mkt-row">
-                    <div className="verdict-mkt-emoji">🗳</div>
-                    <div className="verdict-mkt-name" id="vName">{displayMarketName}</div>
-                  </div>
                   <div className="verdict-line" id="vLine">
                     {analysisResult.master_res?.verdict ?? 'Neutral'}
                   </div>
@@ -581,28 +704,34 @@ function App() {
                 </div>
                 <div className="prob-row" style={{ position: 'relative', marginTop: 12 }}>
                   <div style={{ position: 'absolute', top: -14, left: 0, width: '100%', textAlign: 'center', fontSize: 9, fontWeight: 800, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '.08em' }}>Volume Sentiment (Trade Weighting)</div>
-                  <div className="prob-block"><div className="prob-pct yes" id="vYes">{yesPct}%</div><div className="prob-out">YES</div></div>
+                  <div className="prob-block"><div className="prob-pct yes" id="vYes">{sentimentYesPct}%</div><div className="prob-out">YES</div></div>
                   <div className="prob-sep" /><div className="prob-vs">vs</div><div className="prob-sep" />
-                  <div className="prob-block"><div className="prob-pct no" id="vNo">{100 - sentimentYesPct}%</div><div className="prob-out">NO</div></div>
+                  <div className="prob-block"><div className="prob-pct no" id="vNo">{sentimentNoPct}%</div><div className="prob-out">NO</div></div>
                 </div>
               </div>
 
-              <div className="analysis-body bento-layout">
-                <div className="analysis-left bento-column-main">
+              <div className="analysis-body bento-layout analysis-grid-4">
+                <div className="analysis-cell analysis-top-left">
                   <div className="bento-card bento-signals">
                     <div className="analysis-section-head">
                       <div className="analysis-section-title">Core signal breakdown</div>
-                      <div className="analysis-section-sub">The two strongest inputs driving this market call.</div>
+                      <div className="analysis-section-sub">Market health and risk vectors.</div>
                     </div>
                     <div className="tiles-row full-analysis-tiles">
                       {(() => {
                         const ic = analysisResult.integrity_res?.components
                         const iCls = analysisResult.integrity_res?.score && analysisResult.integrity_res.score < 0.3 ? 'bad' : analysisResult.integrity_res?.score && analysisResult.integrity_res.score < 0.6 ? 'ok' : 'good'
                         const iAns = analysisResult.integrity_res?.status ?? ''
-                        const iDesc = `Score ${((analysisResult.integrity_res?.score ?? 0) * 100).toFixed(0)}% · Analysis of 5 risk vectors.`
+                        const iDesc = `Score ${((analysisResult.integrity_res?.score ?? 0) * 100).toFixed(0)}% · Analysis of risk vectors.`
+                        const healthBlurb = (() => {
+                          const s = (iAns || '').toLowerCase()
+                          if (s.includes('healthy')) return 'Low risk of manipulation. Order flow looks normal and no single actor dominates—fair conditions for trading.'
+                          if (s.includes('volatile')) return 'Moderate risk. Some concentration or unusual activity; treat signals with a bit more caution.'
+                          if (s.includes('manipulation')) return 'High risk. Heavy whale influence or suspicious patterns—use extra caution before sizing in.'
+                          return ''
+                        })()
                         return (
                           <div className={`tile ${iCls}`} id="tile1">
-                            <div className="tile-icon">🛡️</div>
                             <div className="tile-q">Is the market healthy?</div>
                             <div className={`tile-answer ${iCls}`} id="t1ans">{iAns}</div>
                             <div className="tile-desc" id="t1desc">{iDesc}</div>
@@ -611,67 +740,91 @@ function App() {
                               <div className="tbar-row"><span className="tbar-name">Flip</span><div className="tbar-track"><div className="tbar-fill" style={{ width: `${((ic?.flip_risk ?? 0) * 100).toFixed(0)}%`, background: 'var(--lime)' }} /></div><span className="tbar-val">{(ic?.flip_risk ?? 0).toFixed(2)}</span></div>
                               <div className="tbar-row"><span className="tbar-name">Cluster</span><div className="tbar-track"><div className="tbar-fill" style={{ width: `${((ic?.cluster_risk ?? 0) * 100).toFixed(0)}%`, background: 'var(--lime)' }} /></div><span className="tbar-val">{(ic?.cluster_risk ?? 0).toFixed(2)}</span></div>
                             </div>
-                          </div>
-                        )
-                      })()}
-                      {(() => {
-                        const cq = analysisResult.conf_res?.data_quality ?? 0
-                        const cv = analysisResult.conf_res?.conviction_score ?? 0
-                        const confCls = trustClass(cq * 100)
-                        const cAns = analysisResult.conf_res?.confidence_level ?? ''
-                        const cDesc = `Data quality ${(cq * 100).toFixed(0)}%, Conviction ${(cv * 100).toFixed(0)}%`
-                        return (
-                          <div className={`tile ${confCls}`} id="tile3">
-                            <div className="tile-icon">🎯</div>
-                            <div className="tile-q">How sure is the signal?</div>
-                            <div className={`tile-answer ${confCls}`} id="t3ans">{cAns}</div>
-                            <div className="tile-desc" id="t3desc">{cDesc}</div>
-                            <div className="tile-bars">
-                              <div className="tbar-row"><span className="tbar-name">Quality</span><div className="tbar-track"><div className="tbar-fill" style={{ width: `${(cq * 100).toFixed(0)}%`, background: 'var(--lime)' }} /></div><span className="tbar-val">{(cq * 100).toFixed(0)}%</span></div>
-                              <div className="tbar-row"><span className="tbar-name">Conviction</span><div className="tbar-track"><div className="tbar-fill" style={{ width: `${(cv * 100).toFixed(0)}%`, background: 'var(--purple)' }} /></div><span className="tbar-val">{(cv * 100).toFixed(0)}%</span></div>
-                            </div>
+                            {healthBlurb && <div className="tile-blurb" id="t1blurb">{healthBlurb}</div>}
                           </div>
                         )
                       })()}
                     </div>
                   </div>
+                </div>
 
+                <div className="analysis-cell analysis-top-right">
+                  <div className="chart-card bento-card bento-chart">
+                    <div className="chart-header">
+                      <div><div className="chart-title">Price over time</div><div className="chart-sub">Implied YES probability · 5-min intervals · All-time</div></div>
+                    </div>
+                    <div className="chart-wrap">
+                      <PriceChartSVG priceSeries={analysisResult.price_series ?? []} currentPct={yesPct} />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="analysis-cell analysis-bottom-left">
                   {walletIntel && (
                     <div className="wallet-intel-card bento-card bento-wallet">
                       <div className="wi-header">
                         <div className="wi-header-left">
-                          <div className="wi-label">🧠 Wallet Intel</div>
+                          <div className="wi-label">Wallet Intel</div>
                           <div className={`wi-headline lean-${walletIntel.lean}`} id="wiHeadline">
-                            {walletIntel.lean === 'yes' && 'Smart money leaning YES'}
-                            {walletIntel.lean === 'no' && 'Smart money leaning NO'}
+                            {walletIntel.lean === 'yes' && 'Smart wallets leaning YES'}
+                            {walletIntel.lean === 'no' && 'Smart wallets leaning NO'}
                             {walletIntel.lean === 'split' && 'Smart money is split'}
                           </div>
                           <div className="wi-sub" id="wiSub">
-                            {walletIntel.lean === 'yes' && 'Top financial stakeholders are positioning for YES.'}
+                            {/*{walletIntel.lean === 'yes' && 'Top financial stakeholders are positioning for YES.'}  */}
                             {walletIntel.lean === 'no' && 'Top financial stakeholders are positioning for NO.'}
                             {walletIntel.lean === 'split' && 'No consensus among the largest market participants.'}
                           </div>
                         </div>
-                        <div className={`wi-lean-badge ${walletIntel.lean}`} id="wiLeanBadge">
-                          <div className="wi-lean-pct" id="wiLeanPct">{walletIntel.leanPct}%</div>
-                          <div className={`wi-lean-dir ${walletIntel.lean}`} id="wiLeanDir">{walletIntel.lean === 'split' ? '~SPLIT' : walletIntel.lean.toUpperCase()}</div>
-                        </div>
-                      </div>
-                      <div className="wi-dot-chart">
-                        <div className="wi-dot-chart-label">Where smart wallets stand</div>
-                        <div className="dot-chart-wrap">
-                          <div className="dot-chart-axis" id="dotAxis">
-                            <div className="dot-chart-track" />
-                            <div className="dot-chart-ticks">
-                              {[10, 30, 50, 70, 90].map((p) => (
-                                <div key={p}><div className="tick-line" style={{ left: `${p}%` }} /><div className="tick-lbl" style={{ left: `${p}%` }}>{p}%</div></div>
-                              ))}
+                        {(() => {
+                          const y = walletIntel.wallets.filter((w) => w.side === 'yes').length
+                          const n = walletIntel.wallets.filter((w) => w.side === 'no').length
+                          const t = y + n
+                          const badgePct = t ? Math.round((Math.max(y, n) / t) * 100) : 50
+                          const badgeDir = y >= n ? 'yes' : 'no'
+                          return (
+                            <div className={`wi-lean-badge ${badgeDir}`} id="wiLeanBadge">
+                              <div className="wi-lean-pct" id="wiLeanPct">{badgePct}%</div>
+                              <div className={`wi-lean-dir ${badgeDir}`} id="wiLeanDir">{badgeDir === 'yes' ? 'YES' : 'NO'}</div>
                             </div>
-                            {walletIntel.wallets.map((wlt, i) => (
-                              <div key={wlt.addr} className={`wallet-dot ${wlt.side}`} style={{ left: `${wlt.belief}%` }} title={`${wlt.addr} · ${wlt.belief}% YES`}>{i + 1}</div>
-                            ))}
-                          </div>
-                        </div>
+                          )
+                        })()}
+                      </div>
+                      <div className="wi-distribution">
+                        <div className="wi-distribution-label">Where top-performing wallets stand</div>
+                        {(() => {
+                          const yesCount = walletIntel.wallets.filter((w) => w.side === 'yes').length
+                          const noCount = walletIntel.wallets.filter((w) => w.side === 'no').length
+                          const total = yesCount + noCount
+                          const maxCount = Math.max(1, yesCount, noCount)
+                          const noHeightPct = (noCount / maxCount) * 100
+                          const yesHeightPct = (yesCount / maxCount) * 100
+                          return (
+                            <>
+                              <div className="wi-yesno-vertical-bars">
+                                <div className="wi-vertical-bar-col">
+                                  <div className="wi-vertical-bar-wrap">
+                                    <div className="wi-vertical-bar no" style={{ height: `${noHeightPct}%` }}>
+                                      <span className="wi-vertical-bar-num">{noCount}</span>
+                                    </div>
+                                  </div>
+                                  <span className="wi-yesno-lbl no">NO</span>
+                                </div>
+                                <div className="wi-vertical-bar-col">
+                                  <div className="wi-vertical-bar-wrap">
+                                    <div className="wi-vertical-bar yes" style={{ height: `${yesHeightPct}%` }}>
+                                      <span className="wi-vertical-bar-num">{yesCount}</span>
+                                    </div>
+                                  </div>
+                                  <span className="wi-yesno-lbl yes">YES</span>
+                                </div>
+                              </div>
+                              {total > 0 && (
+                                <div className="wi-distribution-summary">{yesCount} long YES · {noCount} long NO</div>
+                              )}
+                            </>
+                          )
+                        })()}
                       </div>
                       <div className="wi-divergence">
                         <div className="wi-div-label">Divergence among top wallets</div>
@@ -682,20 +835,20 @@ function App() {
                           <div className={`wi-div-stat ${walletIntel.divergence.toLowerCase()}`} id="divStat">{walletIntel.divergence}</div>
                         </div>
                         <div className="wi-div-desc" id="divDesc">
-                          {walletIntel.divergence === 'Low' && 'Smart money agrees. That gives the signal more weight.'}
-                          {walletIntel.divergence === 'Medium' && 'Some disagreement among top wallets. Signal has noise.'}
-                          {walletIntel.divergence === 'High' && 'Wide split among smart wallets. The signal is contested.'}
+                          {walletIntel.divergence === 'Low' && 'We can see that the big dawgs are taking similar trades! That gives the signal more weight and gives us a clearer insight.'}
+                          {walletIntel.divergence === 'Medium' && 'Some disagreement among the big dawgs. Signal has noise.'}
+                          {walletIntel.divergence === 'High' && 'Wide split among the big dawgs. The signal is contested; Be cautious.'}
                         </div>
                       </div>
                       <div className="wi-wallets">
                         <div className="wi-wallets-label">
                           Top wallets <span style={{ color: 'var(--text3)', fontWeight: 500 }}>(by accuracy)</span>
-                          <span className="wi-expand-btn" id="wiExpandBtn" onClick={() => setWalletsExpanded((x) => !x)} role="button" tabIndex={0}>{walletsExpanded ? 'Show less ↑' : 'Show all ↓'}</span>
+                          <span className="wi-expand-btn" id="wiExpandBtn" onClick={() => setWalletsExpanded((x) => !x)} role="button" tabIndex={0}>{walletsExpanded ? 'Show less' : 'Show all'}</span>
                         </div>
                         <div id="walletList">
                           {(walletsExpanded ? walletIntel.wallets : walletIntel.wallets.slice(0, 3)).map((wlt, i) => (
                             <div key={wlt.addr} className="wallet-row">
-                              <div className={`wallet-avatar s${(i % 5) + 1}`}>{wlt.label.includes('#') ? (wlt.label.replace(/\D/g, '') || '?') : '🏆'}</div>
+                              <div className={`wallet-avatar s${(i % 5) + 1}`}>{wlt.label.includes('#') ? (wlt.label.replace(/\D/g, '') || '?') : '#'}</div>
                               <div className="wallet-info">
                                 <div className="wallet-addr">{wlt.label} · <span style={{ fontSize: 10, color: 'var(--text3)' }}>{wlt.addr}</span></div>
                                 <div className="wallet-stats">{wlt.rank} · {wlt.vol} vol {wlt.badge && <span className={`wallet-badge badge-${wlt.badge}`}>{wlt.badgeLbl}</span>}</div>
@@ -710,23 +863,9 @@ function App() {
                       </div>
                     </div>
                   )}
-
-                  <div className="chart-card bento-card bento-chart">
-                    <div className="analysis-section-head">
-                      <div className="analysis-section-title">Market activity</div>
-                      <div className="analysis-section-sub">Price path and latest executed trades.</div>
-                    </div>
-                    <div className="chart-header">
-                      <div><div className="chart-title">Price over time</div><div className="chart-sub">Implied YES probability · 5-min intervals</div></div>
-                    </div>
-                    <div className="chart-wrap">
-                      <PriceChartSVG priceSeries={analysisResult.price_series ?? []} currentPct={yesPct} />
-                    </div>
-                  </div>
-
                 </div>
 
-                <div className="analysis-right bento-column-side">
+                <div className="analysis-cell analysis-bottom-right">
                   <div className="chat-card bento-card bento-chat">
                     <div className="chat-header">
                       <div className="chat-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -765,7 +904,7 @@ function App() {
                         onChange={(e) => setChatInput(e.target.value)}
                         onKeyDown={(e) => e.key === 'Enter' && sendMsg()}
                       />
-                      <button type="button" className="send-btn" onClick={sendMsg}>↑</button>
+                      <button type="button" className="send-btn" onClick={sendMsg} aria-label="Send">Send</button>
                     </div>
                   </div>
                 </div>
@@ -818,7 +957,6 @@ function App() {
                     const iDesc = `Score ${(analysisResult.integrity_res?.score ?? 0) * 100}%`
                     return (
                       <div className={`tile ${iCls}`} style={{ flex: 1, minWidth: 200 }}>
-                        <div className="tile-icon">🛡️</div>
                         <div className="tile-q">Market Health</div>
                         <div className={`tile-answer ${iCls}`}>{iAns}</div>
                         <div className="tile-desc">{iDesc}</div>
@@ -833,7 +971,6 @@ function App() {
                     const sDesc = `Informed ${(inf?.informed_score ?? 0) * 100}%, Whale ${(inf?.whale_score ?? 0) * 100}%`
                     return (
                       <div className={`tile ${infCls}`} style={{ flex: 1, minWidth: 200 }}>
-                        <div className="tile-icon">🧠</div>
                         <div className="tile-q">Who's Trading?</div>
                         <div className={`tile-answer ${infCls}`}>{sAns}</div>
                         <div className="tile-desc">{sDesc}</div>
@@ -848,7 +985,6 @@ function App() {
                     const cDesc = `Quality ${(cq * 100).toFixed(0)}%`
                     return (
                       <div className={`tile ${confCls}`} style={{ flex: 1, minWidth: 200 }}>
-                        <div className="tile-icon">🎯</div>
                         <div className="tile-q">Signal Strength</div>
                         <div className={`tile-answer ${confCls}`}>{cAns}</div>
                         <div className="tile-desc">{cDesc}</div>

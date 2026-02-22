@@ -914,7 +914,7 @@ export default function LandingPage({
         <span className="land-paw"><img src="/reddog-removebg-preview.png" alt="" /></span>
         <div className="land-title">Do you <em>trust</em><br />that bet?</div>
         <div className="land-sub">We analyze prediction market trades with statistical models to identify high-performing wallets, detect manipulation, and extract real predictive signals, simplifying the noise so you know when to lean in and when to walk away.</div>
-        <button type="button" className="land-cta" onClick={onBrowseMarkets}>Browse Markets →</button>
+        <button type="button" className="land-cta" onClick={onBrowseMarkets}>Browse Markets</button>
         <div className="land-stats">
           <div className="lstat"><div className="lstat-val">{volumeDisplay}</div><div className="lstat-lab">Volume Tracked</div></div>
           <div style={{ width: "1px", background: "var(--border2)" }} />
@@ -924,7 +924,7 @@ export default function LandingPage({
         </div>
         <button type="button" className="dn-arrow hero-arrow" onClick={() => scrollTo("s-intro")}>
           <span className="dn-arrow-lbl">see how it works</span>
-          <span className="dn-arrow-icon">↓</span>
+          <span className="dn-arrow-icon" aria-hidden> </span>
         </button>
       </section>
 
@@ -967,7 +967,7 @@ Every market has a number. Behind it are real wallets making real bets. We track
         </div>
         <button type="button" className="dn-arrow" onClick={() => scrollTo("s1")}>
           <span className="dn-arrow-lbl">step 1</span>
-          <span className="dn-arrow-icon">↓</span>
+          <span className="dn-arrow-icon" aria-hidden> </span>
         </button>
       </section>
 
@@ -1003,7 +1003,7 @@ Every market has a number. Behind it are real wallets making real bets. We track
         </div>
         <button type="button" className="dn-arrow" onClick={() => scrollTo("s2")}>
           <span className="dn-arrow-lbl">step 2</span>
-          <span className="dn-arrow-icon">↓</span>
+          <span className="dn-arrow-icon" aria-hidden> </span>
         </button>
       </section>
 
@@ -1041,7 +1041,7 @@ Every market has a number. Behind it are real wallets making real bets. We track
         </div>
         <button type="button" className="dn-arrow" onClick={() => scrollTo("s3")}>
           <span className="dn-arrow-lbl">step 3</span>
-          <span className="dn-arrow-icon">↓</span>
+          <span className="dn-arrow-icon" aria-hidden> </span>
         </button>
       </section>
 
@@ -1063,7 +1063,7 @@ Every market has a number. Behind it are real wallets making real bets. We track
 
         <button type="button" className="dn-arrow" style={{ marginTop: "32px" }} onClick={() => scrollTo("s4")}>
           <span className="dn-arrow-lbl">step 4</span>
-          <span className="dn-arrow-icon">↓</span>
+          <span className="dn-arrow-icon" aria-hidden> </span>
         </button>
       </section>
 
@@ -1094,7 +1094,7 @@ Every market has a number. Behind it are real wallets making real bets. We track
         </div>
         <button type="button" className="dn-arrow" onClick={() => scrollTo("s5")}>
           <span className="dn-arrow-lbl">step 5</span>
-          <span className="dn-arrow-icon">↓</span>
+          <span className="dn-arrow-icon" aria-hidden> </span>
         </button>
       </section>
 
@@ -1114,14 +1114,14 @@ Every market has a number. Behind it are real wallets making real bets. We track
         </div>
         <button type="button" className="dn-arrow" onClick={() => scrollTo("s-final")}>
           <span className="dn-arrow-lbl">that&apos;s it</span>
-          <span className="dn-arrow-icon">↓</span>
+          <span className="dn-arrow-icon" aria-hidden> </span>
         </button>
       </section>
 
       <section id="s-final">
         <div className="final-title reveal">Now you know.<br />Follow the <em>big dawgs.</em></div>
         <div className="final-sub reveal">Pick a market, run the analysis, see exactly where smart money stands.</div>
-        <button type="button" className="land-cta reveal" onClick={onBrowseMarkets}>Browse Markets →</button>
+        <button type="button" className="land-cta reveal" onClick={onBrowseMarkets}>Browse Markets</button>
       </section>
     </>
   );

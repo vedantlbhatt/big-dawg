@@ -75,8 +75,17 @@ def _serialize_ts(ts):
     return str(ts)
 
 
-def _build_wallet_intel_for_ui(wallet_summary, top_n=5):
-    """Build wallet intel from wallet_summary for React UI: lean, divergence, wallets with belief/side."""
+# Same star criteria as logic_engine: ROI threshold + minimum size
+WALLET_INTEL_ROI_MIN = 0.15  # 15% ROI
+WALLET_INTEL_COST_BASIS_MIN = 10  # $10 min position
+WALLET_INTEL_MAX_WALLETS = 25  # cap for UI (all that pass threshold, up to this many)
+# Min cost basis for fallback when no stars pass (so we still show distribution)
+WALLET_INTEL_FALLBACK_COST_MIN = 1.0
+
+def _build_wallet_intel_for_ui(wallet_summary):
+    """Build wallet intel from wallet_summary for React UI: lean, divergence, wallets with belief/side.
+    Uses same star criteria as logic_engine (ROI + cost_basis threshold). If no wallets pass,
+    falls back to top wallets by cost_basis so the distribution chart always plots."""
     if wallet_summary is None or wallet_summary.empty:
         return {
             "lean": "split",
@@ -85,8 +94,17 @@ def _build_wallet_intel_for_ui(wallet_summary, top_n=5):
             "wallets": [],
         }
     import pandas as pd
-    # Sort by cost_basis desc to get top wallets by size
-    df = wallet_summary.sort_values("cost_basis", ascending=False).head(top_n)
+    # Filter to wallets that pass star threshold (same as logic_engine)
+    stars = wallet_summary[
+        (wallet_summary["roi"] >= WALLET_INTEL_ROI_MIN) &
+        (wallet_summary["cost_basis"] > WALLET_INTEL_COST_BASIS_MIN)
+    ]
+    # If no stars pass, use top wallets by cost_basis (min $1) so distribution still has data
+    if stars.empty:
+        fallback = wallet_summary[wallet_summary["cost_basis"] > WALLET_INTEL_FALLBACK_COST_MIN]
+        df = fallback.sort_values("cost_basis", ascending=False).head(WALLET_INTEL_MAX_WALLETS)
+    else:
+        df = stars.sort_values("cost_basis", ascending=False).head(WALLET_INTEL_MAX_WALLETS)
     if df.empty:
         return {"lean": "split", "leanPct": 50, "divergence": "Medium", "wallets": []}
     # Belief = avg_entry_price as 0-100 (YES probability)
@@ -109,9 +127,14 @@ def _build_wallet_intel_for_ui(wallet_summary, top_n=5):
         divergence = "Medium"
     else:
         divergence = "High"
+    mean_belief = float(beliefs.mean()) if not beliefs.empty else 50
     wallets = []
     for i, (_, row) in enumerate(df.iterrows()):
-        belief_pct = round(float(row["avg_entry_price"] * 100))
+        raw_belief = float(row["avg_entry_price"] * 100)
+        # Sell-only wallets have avg_entry_price 0; put them on NO side of distribution
+        if raw_belief == 0 and row["net_position"] < 0:
+            raw_belief = 100 - mean_belief
+        belief_pct = max(0, min(100, round(raw_belief)))
         side = "yes" if row["net_position"] > 0 else "no"
         addr = row["wallet"]
         short_addr = f"{addr[:6]}...{addr[-4:]}" if isinstance(addr, str) and len(addr) > 12 else str(addr)
@@ -124,6 +147,8 @@ def _build_wallet_intel_for_ui(wallet_summary, top_n=5):
             badge, badge_lbl = "heavy", "High conviction"
         else:
             badge, badge_lbl = "early", "Early entry"
+        n = len(df)
+        rank_pct = round((i + 1) / n * 100) if n else 0
         wallets.append({
             "label": f"#{i+1}" if i >= 3 else ["🏆 #1", "🥈 #2", "🥉 #3"][i],
             "addr": short_addr,
@@ -132,7 +157,7 @@ def _build_wallet_intel_for_ui(wallet_summary, top_n=5):
             "badge": badge,
             "badgeLbl": badge_lbl,
             "vol": vol,
-            "rank": f"Top {(i+1)*5}%",
+            "rank": f"Top {rank_pct}%" if n > 1 else "Top 1%",
         })
     return {
         "lean": lean,
@@ -165,7 +190,7 @@ def get_global_stats():
 
 
 @app.get("/api/markets")
-def get_markets(limit: int = 200, query: str = None, timeout: int = 8):
+def get_markets(limit: int = 200, query: str = None, timeout: int = 20):
     """Fetch active Polymarket markets with optional query.
     
     OPTIMIZED: Uses caching to avoid repeated API calls.
@@ -315,14 +340,15 @@ def analyze_market(req: AnalyzeRequest):
     if not target:
         raise HTTPException(status_code=400, detail="target is required")
     
-    # Check cache first - highly optimized
-    if target in _analysis_cache:
-        cached_result, cached_time = _analysis_cache[target]
+    # Cache key includes version so old "short-window" cached results are not reused
+    _CACHE_KEY = f"{target}:alltime"
+    if _CACHE_KEY in _analysis_cache:
+        cached_result, cached_time = _analysis_cache[_CACHE_KEY]
         if time.time() - cached_time < CACHE_TTL:
             print(f"📦 Cache hit for {target}")
-            return cached_result  # Return cached result immediately
+            return cached_result
         else:
-            del _analysis_cache[target]  # Cache expired
+            del _analysis_cache[_CACHE_KEY]
     
     # Timeout wrapper for analysis
     import threading
@@ -334,16 +360,16 @@ def analyze_market(req: AnalyzeRequest):
             print(f"🔄 Analyzing {target}...")
             analysis_start = time.time()
             
-            # Fetch trade data with timeout - optimized fetch
-            trades_df = fetch_trades(target, max_trades=2000, timeout=12) 
+            # Fetch all-time trade data
+            trades_df = fetch_trades(target, max_trades=10000, timeout=15)
             if trades_df.empty:
                 result_container["error"] = "No trade data found for this market"
                 return
-            
-            print(f"  ✓ Fetched {len(trades_df)} trades in {time.time() - analysis_start:.2f}s")
-            
-            # Use recent trades for faster processing (most recent 1000 trades are most relevant)
-            analysis_trades = trades_df.tail(1000) if len(trades_df) > 1000 else trades_df
+
+            print(f"  ✓ Fetched {len(trades_df)} trades (all-time) in {time.time() - analysis_start:.2f}s")
+
+            # Use all trades for analysis (all-time data)
+            analysis_trades = trades_df
             
             # Try to resolve yes/no labels from metadata if available
             yes_label = "YES"
@@ -394,10 +420,17 @@ def analyze_market(req: AnalyzeRequest):
             except Exception:
                 market_name = target
             
-            # Price series for chart (up to 200 points)
+            # Price series for chart (all-time; downsample if > 1000 points for smooth rendering)
             price_list = []
-            ps_tail = price_series.tail(200)
-            for ts, val in ps_tail.items():
+            n_ps = len(price_series)
+            if n_ps <= 1000:
+                ps_send = price_series
+            else:
+                step = n_ps / 1000
+                indices = [int(i * step) for i in range(1000)] + [n_ps - 1]
+                indices = sorted(set(indices))
+                ps_send = price_series.iloc[indices]
+            for ts, val in ps_send.items():
                 price_list.append({"timestamp": _serialize_ts(ts), "price": round(float(val), 4)})
             
             # Trades for raw table (last 100)
@@ -489,7 +522,7 @@ def analyze_market(req: AnalyzeRequest):
     
     if result_container["result"]:
         # Cache the result
-        _analysis_cache[target] = (result_container["result"], time.time())
+        _analysis_cache[_CACHE_KEY] = (result_container["result"], time.time())
         return result_container["result"]
     
     raise HTTPException(status_code=500, detail="Analysis failed for unknown reason")
