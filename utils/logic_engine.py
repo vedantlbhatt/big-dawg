@@ -53,6 +53,9 @@ def master_logic_engine(trades_df, price_series, wallet_summary=None):
         (integrity_score_val * weights["integrity"]) +
         (info_score_val * weights["info"])
     )
+    
+    # Aggressive boost for "impressive" scores (e.g. 0.25 -> 0.57)
+    overall_score = overall_score ** 0.4
 
     # 5. Build JSON Summary
     summary = {
