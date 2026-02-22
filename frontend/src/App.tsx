@@ -714,12 +714,12 @@ function App() {
                             <div className="tile-q">Is the market healthy?</div>
                             <div className={`tile-answer ${iCls}`} id="t1ans">{iAns}</div>
                             <div className="tile-desc" id="t1desc">{iDesc}</div>
-                            {healthBlurb && <div className="tile-blurb" id="t1blurb">{healthBlurb}</div>}
                             <div className="tile-bars">
                               <div className="tbar-row"><span className="tbar-name">Whale</span><div className="tbar-track"><div className="tbar-fill" style={{ width: `${((ic?.whale_risk ?? 0) * 100).toFixed(0)}%`, background: 'var(--lime)' }} /></div><span className="tbar-val">{(ic?.whale_risk ?? 0).toFixed(2)}</span></div>
                               <div className="tbar-row"><span className="tbar-name">Flip</span><div className="tbar-track"><div className="tbar-fill" style={{ width: `${((ic?.flip_risk ?? 0) * 100).toFixed(0)}%`, background: 'var(--lime)' }} /></div><span className="tbar-val">{(ic?.flip_risk ?? 0).toFixed(2)}</span></div>
                               <div className="tbar-row"><span className="tbar-name">Cluster</span><div className="tbar-track"><div className="tbar-fill" style={{ width: `${((ic?.cluster_risk ?? 0) * 100).toFixed(0)}%`, background: 'var(--lime)' }} /></div><span className="tbar-val">{(ic?.cluster_risk ?? 0).toFixed(2)}</span></div>
                             </div>
+                            {healthBlurb && <div className="tile-blurb" id="t1blurb">{healthBlurb}</div>}
                           </div>
                         )
                       })()}
@@ -776,6 +776,33 @@ function App() {
                           const summary = maxCount === 0 ? 'No data' : `Most at ${peakStart}–${peakEnd}% YES`
                           return (
                             <>
+                              <div className="wi-distribution-dots-row">
+                                <div className="wi-distribution-dots-track">
+                                  {(() => {
+                                    const NUDGE = 2.5
+                                    const OVERLAP_THRESH = 3
+                                    let nudgeIndex = 0
+                                    let lastBelief: number | null = null
+                                    return walletIntel.wallets.map((wlt, i) => {
+                                      const belief = Number(wlt.belief) || 0
+                                      const overlaps = lastBelief !== null && Math.abs(belief - lastBelief) < OVERLAP_THRESH
+                                      if (overlaps) nudgeIndex += 1
+                                      else nudgeIndex = 0
+                                      lastBelief = belief
+                                      const leftPct = Math.min(98, Math.max(2, belief + (nudgeIndex * NUDGE)))
+                                      return (
+                                        <div
+                                          key={wlt.addr}
+                                          className={`wi-wallet-dot ${wlt.side}`}
+                                          style={{ left: `${leftPct}%` }}
+                                          title={`#${i + 1} ${wlt.addr} · ${wlt.belief}% YES`}
+                                          aria-hidden="false"
+                                        />
+                                      )
+                                    })
+                                  })()}
+                                </div>
+                              </div>
                               <div className="wi-distribution-bars-wrap">
                                 <div className="wi-distribution-bars">
                                   {binCounts.map((count, i) => (

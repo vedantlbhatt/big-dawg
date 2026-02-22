@@ -73,8 +73,14 @@ def _serialize_ts(ts):
     return str(ts)
 
 
-def _build_wallet_intel_for_ui(wallet_summary, top_n=5):
-    """Build wallet intel from wallet_summary for React UI: lean, divergence, wallets with belief/side."""
+# Same star criteria as logic_engine: ROI threshold + minimum size
+WALLET_INTEL_ROI_MIN = 0.15  # 15% ROI
+WALLET_INTEL_COST_BASIS_MIN = 10  # $10 min position
+WALLET_INTEL_MAX_WALLETS = 25  # cap for UI (all that pass threshold, up to this many)
+
+def _build_wallet_intel_for_ui(wallet_summary):
+    """Build wallet intel from wallet_summary for React UI: lean, divergence, wallets with belief/side.
+    Uses same star criteria as logic_engine (ROI + cost_basis threshold), not fixed top-N by size."""
     if wallet_summary is None or wallet_summary.empty:
         return {
             "lean": "split",
@@ -83,8 +89,15 @@ def _build_wallet_intel_for_ui(wallet_summary, top_n=5):
             "wallets": [],
         }
     import pandas as pd
-    # Sort by cost_basis desc to get top wallets by size
-    df = wallet_summary.sort_values("cost_basis", ascending=False).head(top_n)
+    # Filter to wallets that pass star threshold (same as logic_engine)
+    stars = wallet_summary[
+        (wallet_summary["roi"] >= WALLET_INTEL_ROI_MIN) &
+        (wallet_summary["cost_basis"] > WALLET_INTEL_COST_BASIS_MIN)
+    ]
+    if stars.empty:
+        return {"lean": "split", "leanPct": 50, "divergence": "Medium", "wallets": []}
+    # Sort by cost_basis desc, cap for UI
+    df = stars.sort_values("cost_basis", ascending=False).head(WALLET_INTEL_MAX_WALLETS)
     if df.empty:
         return {"lean": "split", "leanPct": 50, "divergence": "Medium", "wallets": []}
     # Belief = avg_entry_price as 0-100 (YES probability)
@@ -122,6 +135,8 @@ def _build_wallet_intel_for_ui(wallet_summary, top_n=5):
             badge, badge_lbl = "heavy", "High conviction"
         else:
             badge, badge_lbl = "early", "Early entry"
+        n = len(df)
+        rank_pct = round((i + 1) / n * 100) if n else 0
         wallets.append({
             "label": f"#{i+1}" if i >= 3 else ["🏆 #1", "🥈 #2", "🥉 #3"][i],
             "addr": short_addr,
@@ -130,7 +145,7 @@ def _build_wallet_intel_for_ui(wallet_summary, top_n=5):
             "badge": badge,
             "badgeLbl": badge_lbl,
             "vol": vol,
-            "rank": f"Top {(i+1)*5}%",
+            "rank": f"Top {rank_pct}%" if n > 1 else "Top 1%",
         })
     return {
         "lean": lean,
