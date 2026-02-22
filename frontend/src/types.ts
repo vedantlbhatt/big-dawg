@@ -13,6 +13,8 @@ export interface Market {
   integrity_score?: number
   info_score?: number
   conf_score?: number
+  yes_label?: string
+  current_price?: number
 }
 
 export interface IntegrityResult {
@@ -89,6 +91,7 @@ export interface AnalysisResult {
   trades_count: number
   yes_vol?: number
   no_vol?: number
+  current_price?: number
 }
 
 export interface ChatMessage {

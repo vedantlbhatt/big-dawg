@@ -188,3 +188,36 @@ def fetch_user_positions(address):
         return pd.DataFrame(positions)
     return pd.DataFrame()
 
+
+def calculate_volume_split(trades_df, yes_label=None):
+    """
+    Calculates YES/NO volume split with robust label mapping.
+    Combines robust global variants with the canonical yes_label if provided.
+    """
+    if trades_df.empty:
+        return 0.0, 0.0
+        
+    df = trades_df.copy()
+    df['outcome_norm'] = df['outcome'].astype(str).str.strip().str.upper()
+    
+    # Global Robust mapping for YES/NO pairs
+    yes_variants = {'YES', 'PURCHASE YES', 'TRUE', 'LONG', 'DEMS', 'DEMOCRATIC', 'OVER', 'WON', 'WIN'}
+    no_variants = {'NO', 'PURCHASE NO', 'FALSE', 'SHORT', 'REPS', 'REPUBLICAN', 'UNDER', 'LOST', 'LOSS'}
+    
+    if yes_label:
+        yl_norm = str(yes_label).strip().upper()
+        # Ensure the canonical label is in our set
+        yes_variants.add(yl_norm)
+    
+    # Calculate dollar volume (size * price)
+    df['vol_usd'] = df['size'] * df['price']
+    
+    yes_vol = float(df[df['outcome_norm'].isin(yes_variants)]['vol_usd'].sum())
+    # If we have a yes_label, "NO" is everything else. 
+    # If not, we use the specific no_variants to avoid including noise as "NO".
+    if yes_label:
+        no_vol = float(df[~df['outcome_norm'].isin(yes_variants)]['vol_usd'].sum())
+    else:
+        no_vol = float(df[df['outcome_norm'].isin(no_variants)]['vol_usd'].sum())
+    
+    return yes_vol, no_vol

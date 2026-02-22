@@ -1,5 +1,5 @@
 import pandas as pd
-from utils.fetch_data import fetch_trades
+from utils.fetch_data import fetch_trades, calculate_volume_split
 from utils.market_loader import fetch_markets
 from integrity_engine.integrity_score import integrity_score
 from information_engine.information import classify_market_behavior
@@ -30,14 +30,7 @@ def scout_markets(limit=10):
                 continue
             
             # Calculate YES/NO Volumes on FULL history BEFORE tailing
-            trades_df['outcome_norm'] = trades_df['outcome'].astype(str).str.strip().str.upper()
-            
-            # Robust mapping for YES/NO pairs
-            yes_variants = ['YES', 'PURCHASE YES', 'TRUE', 'LONG', 'DEMS', 'DEMOCRATIC', 'OVER', 'WON']
-            no_variants = ['NO', 'PURCHASE NO', 'FALSE', 'SHORT', 'REPS', 'REPUBLICAN', 'UNDER', 'LOST']
-            
-            yes_vol = float(trades_df[trades_df['outcome_norm'].isin(yes_variants)]['size'].sum())
-            no_vol = float(trades_df[trades_df['outcome_norm'].isin(no_variants)]['size'].sum())
+            yes_vol, no_vol = calculate_volume_split(trades_df, yes_label=row.get('yes_label'))
 
             # Align window to 2000 for parity (matches Dashboard depth usually)
             trades_df = trades_df.tail(2000)

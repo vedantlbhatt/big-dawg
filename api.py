@@ -22,7 +22,7 @@ from pydantic import BaseModel
 
 from utils.market_loader import fetch_markets
 from utils.data_loader import get_wallet_analysis
-from utils.fetch_data import fetch_trades
+from utils.fetch_data import fetch_trades, calculate_volume_split
 from utils.cache_manager import get_cached_scout, set_cached_scout
 from utils.analysis_timer import analysis_timer, format_time_stat
 from confidence_layer.confidence import confidence_metrics
@@ -277,8 +277,9 @@ def get_markets(limit: int = 200, query: str = None, timeout: int = 8):
             "no_vol": scout['no_val'] if scout is not None else 0,
             "wallet_score": scout['wallet_score'] if scout is not None else 0,
             "integrity_score": scout['integrity_score'] if scout is not None else 0,
-            "info_score": scout['info_score'] if scout is not None else 0,
             "conf_score": scout['conf_score'] if scout is not None else 0,
+            "yes_label": str(r.get("yes_label", "YES")),
+            "current_price": float(r.get("current_price", 0.5)),
         })
     
     print(f"✓ Returning {len(rows)} markets")
@@ -328,7 +329,7 @@ def analyze_market(req: AnalyzeRequest):
             analysis_start = time.time()
             
             # Fetch trade data with timeout - optimized fetch
-            trades_df = fetch_trades(target, max_trades=1500, timeout=12)  # Reduced from 2000
+            trades_df = fetch_trades(target, max_trades=2000, timeout=12) 
             if trades_df.empty:
                 result_container["error"] = "No trade data found for this market"
                 return
@@ -341,6 +342,25 @@ def analyze_market(req: AnalyzeRequest):
             # Resample price for confidence
             price_series = analysis_trades.set_index("timestamp")["price"].resample("5min").last().ffill()
             wallet_summary = get_wallet_analysis(analysis_trades)
+            
+            # Try to resolve yes_label from metadata if available
+            yes_label = "YES"
+            if not analysis_trades.empty:
+                try:
+                    res = requests.get(GAMMA_URL, params={"slug": target}, timeout=5)
+                    data = res.json()
+                    if isinstance(data, list) and len(data) > 0:
+                        outcomes_raw = data[0].get("outcomes")
+                        if outcomes_raw and isinstance(outcomes_raw, str):
+                            import json
+                            outcomes = json.loads(outcomes_raw)
+                            if outcomes:
+                                yes_label = outcomes[0]
+                except Exception:
+                    pass
+
+            # Calculate volume split for sync
+            yes_vol, no_vol = calculate_volume_split(trades_df, yes_label=yes_label)
             
             # Run master logic engine
             master_res = master_logic_engine(analysis_trades, price_series, wallet_summary)
@@ -422,6 +442,9 @@ def analyze_market(req: AnalyzeRequest):
                 },
                 "recommendation": recommendation,
                 "wallet_intel": wallet_intel,
+                "yes_vol": yes_vol,
+                "no_vol": no_vol,
+                "current_price": float(yes_vol / (yes_vol + no_vol + 1e-9)) if (yes_vol + no_vol) > 0 else 0.5,
                 "price_series": price_list,
                 "trades": trades_list,
                 "trades_count": len(analysis_trades),

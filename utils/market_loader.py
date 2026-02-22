@@ -51,12 +51,36 @@ def fetch_markets(limit=200, query=None):
                 events = m.get("events", [])
                 event_title = events[0].get("title") if events else m.get("question")
                 
+                try:
+                    outcomes_raw = m.get("outcomes")
+                    if outcomes_raw and isinstance(outcomes_raw, str):
+                        import json
+                        outcomes = json.loads(outcomes_raw)
+                        yes_label = outcomes[0] if outcomes else "YES"
+                    else:
+                        yes_label = "YES"
+                except Exception:
+                    yes_label = "YES"
+                
+                try:
+                    prices_raw = m.get("outcomePrices")
+                    if prices_raw and isinstance(prices_raw, str):
+                        import json
+                        prices = json.loads(prices_raw)
+                        current_price = float(prices[0]) if prices else 0.5
+                    else:
+                        current_price = 0.5
+                except Exception:
+                    current_price = 0.5
+                
                 all_markets.append({
                     "event_title": event_title,
                     "question": m.get("question"),
                     "slug": m.get("slug"),
                     "volume": float(m.get("volume", 0)),
-                    "conditionId": m.get("conditionId")
+                    "conditionId": m.get("conditionId"),
+                    "yes_label": yes_label,
+                    "current_price": current_price
                 })
 
             offset += len(data)

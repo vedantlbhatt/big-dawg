@@ -150,7 +150,6 @@ function App() {
   const [selectedMarket, setSelectedMarket] = useState<Market | null>(null)
   const [showInfoCard, setShowInfoCard] = useState(false)
   const [debounceTimer, setDebounceTimer] = useState<ReturnType<typeof setTimeout> | null>(null)
-  const [searchCancellable, setSearchCancellable] = useState(false)
   const [visibleCount, setVisibleCount] = useState(20)
   const replyIdx = useRef(0)
 
@@ -174,7 +173,6 @@ function App() {
     setMarketsError(null)
     const timer = setTimeout(() => {
       setMarketsLoading(true)
-      setSearchCancellable(true)
       fetchMarkets(searchQuery || undefined)
         .then((list) => {
           setApiMarkets(list)
@@ -193,7 +191,6 @@ function App() {
         })
         .finally(() => {
           setMarketsLoading(false)
-          setSearchCancellable(false)
         })
     }, 300) // 300ms debounce
 
@@ -221,7 +218,6 @@ function App() {
   const handleCancelSearch = () => {
     cancelMarketsFetch()
     setMarketsLoading(false)
-    setSearchCancellable(false)
     setMarketsError(null)  // Clear error immediately instead of showing "Search cancelled"
   }
 
@@ -382,18 +378,19 @@ function App() {
                 <div style={{ flex: 1 }}>
                   {(() => {
                     const totalV = (m.yes_vol || 0) + (m.no_vol || 0);
-                    // Use trust_score as fallback for yesPct if volume is missing
+                    // Use canonical price fallback for parity
                     const yesPct = totalV > 0
-                      ? Math.round((m.yes_vol || 0) / totalV * 100)
-                      : (m.trust_score !== null && m.trust_score !== undefined ? m.trust_score : 50);
+                      ? Math.round((m.yes_vol || 0) / (totalV || 1) * 100)
+                      : Math.round((m.current_price ?? 0.5) * 100);
                     const noPct = 100 - yesPct;
+                    const yesLab = m.yes_label && !['YES', 'PURCHASE YES'].includes(m.yes_label.toUpperCase()) ? m.yes_label.slice(0, 8) : 'YES';
                     return (
                       <div className="trust-mini" style={{ width: 100, gap: 4 }}>
                         <div style={{ width: '100%', height: 4, background: 'var(--red)', borderRadius: 2, overflow: 'hidden', display: 'flex' }}>
                           <div style={{ width: `${yesPct}%`, height: '100%', background: 'var(--lime)' }} />
                         </div>
                         <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', fontSize: 9, fontWeight: 800 }}>
-                          <span style={{ color: 'var(--lime)', letterSpacing: '-0.02em' }}>YES {yesPct}%</span>
+                          <span style={{ color: 'var(--lime)', letterSpacing: '-0.02em' }}>{yesLab.toUpperCase()} {yesPct}%</span>
                           <span style={{ color: 'var(--red)', letterSpacing: '-0.02em' }}>NO {noPct}%</span>
                         </div>
                         <div className="tmini-lbl" style={{ fontSize: 7, marginTop: 0 }}>{totalV > 0 ? 'Outcome Capital' : 'Price Sentiment'}</div>
