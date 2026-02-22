@@ -912,7 +912,7 @@ export default function LandingPage({
 
       <section id="s0">
         <span className="land-paw"><img src="/reddog-removebg-preview.png" alt="" /></span>
-        <div className="land-title">Do you <em>trust</em><br />that bet?</div>
+        <div className="land-title">Do you <em>trust</em><br />prediction markets?</div>
         <div className="land-sub">We analyze prediction market trades with statistical models to identify high-performing wallets, detect manipulation, and extract real predictive signals, simplifying the noise so you know when to lean in and when to walk away.</div>
         <button type="button" className="land-cta" onClick={onBrowseMarkets}>Browse Markets</button>
         <div className="land-stats">

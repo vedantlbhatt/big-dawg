@@ -509,11 +509,13 @@ function App() {
 
       {page !== 'landing' && (
         <nav className="nav" id="mainNav">
-          <div className="nav-logo" onClick={() => go('markets')} role="button">
+          <div className="nav-logo" onClick={() => go('landing')} role="button">
             <div className="logo-paw"><img src="/reddog-removebg-preview.png" alt="Big-Dawg" /></div>
             <span>Big<span className="logo-sup">-Dawg</span></span>
           </div>
           <div className="nav-crumb" id="navCrumb">
+            <span className="crumb-item" onClick={() => go('landing')}>Home</span>
+            <span className="crumb-sep">/</span>
             <span className="crumb-item" onClick={() => go('markets')}>Markets</span>
             {analysisResult && (
               <>
