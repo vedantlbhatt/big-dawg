@@ -18,7 +18,7 @@ load_dotenv()
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from utils.market_loader import fetch_markets
 from utils.data_loader import get_wallet_analysis
@@ -63,6 +63,8 @@ class ChatRequest(BaseModel):
     conf_res: dict
     message: str
     history: list[dict]
+    extra_context: dict = Field(default_factory=dict)
+    initial: bool = False
 
 
 def _serialize_ts(ts):
@@ -150,7 +152,7 @@ def get_global_stats():
         
         # Get real average analysis time from tracker
         avg_time_ms = analysis_timer.get_average()
-        avg_time_str = format_time_stat(avg_time_ms) if avg_time_ms > 0 else "48ms"
+        avg_time_str = format_time_stat(avg_time_ms) if avg_time_ms > 0 else "<200ms"
         
         return {
             "volume_tracked": f"${total_vol/1e9:.1f}B" if total_vol > 1e9 else f"${total_vol/1e6:.1f}M",
@@ -524,6 +526,8 @@ def chat(req: ChatRequest):
             req.conf_res,
             req.message,
             history=req.history,
+            extra_context=req.extra_context,
+            initial=req.initial,
         )
         return {"response": response or ""}
     except Exception as e:

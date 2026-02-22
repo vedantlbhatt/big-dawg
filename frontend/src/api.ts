@@ -77,7 +77,11 @@ export async function chat(
   infoRes: AnalysisResult['info_res'],
   confRes: AnalysisResult['conf_res'],
   message: string,
-  history: { role: string; content: string }[]
+  history: { role: string; content: string }[],
+  options?: {
+    extraContext?: Record<string, unknown>
+    initial?: boolean
+  }
 ): Promise<string> {
   if (!API_BASE) {
     return 'Configure VITE_API_URL and run the backend to use the chat.'
@@ -91,6 +95,8 @@ export async function chat(
       conf_res: confRes,
       message,
       history,
+      extra_context: options?.extraContext ?? {},
+      initial: options?.initial ?? false,
     }),
   })
   if (!res.ok) throw new Error('Chat failed')

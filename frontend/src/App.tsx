@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { fetchMarkets, analyzeMarket, cancelMarketsFetch, chat as apiChat } from './api'
+import LandingPage from './LandingPage'
 import type { Market, AnalysisResult, PredictiveInsights } from './types'
 
 type Page = 'landing' | 'markets' | 'analysis'
@@ -133,11 +134,15 @@ function PriceChartSVG({ priceSeries, currentPct }: { priceSeries: { timestamp: 
 }
 
 const PredictiveAlphaDashboard = ({ data, loading }: { data: PredictiveInsights | null; loading: boolean }) => {
-  if (loading) return <div className="alpha-dashboard" style={{ padding: 40, textAlign: 'center', opacity: 0.5 }}>Calculating global alpha signal...</div>;
+  if (loading) return <div className="alpha-dashboard" style={{ padding: 40, textAlign: 'center', opacity: 0.5 }}>Computing 30-min market alpha drivers...</div>;
   if (!data || data.error) return null;
 
   const features = Object.entries(data.coefficients).sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]));
-  const isHighConfidence = data.r2 > 0.3;
+  const featureMeta: Record<string, { primary: string; opposite: string }> = {
+    whale_activity: { primary: 'Whale Activity', opposite: 'Retail Activity' },
+    order_imbalance: { primary: 'Buy Pressure', opposite: 'Sell Pressure' },
+    volatility: { primary: 'Volatility', opposite: 'Stability' },
+  };
 
   return (
     <div className="alpha-dashboard">
@@ -153,27 +158,33 @@ const PredictiveAlphaDashboard = ({ data, loading }: { data: PredictiveInsights 
 
       <div className="alpha-grid">
         {features.map(([name, coef]) => {
-          const absVal = Math.min(100, Math.abs(coef * 500)); // Normalized for display
+          const absVal = Math.min(100, Math.abs(coef * 500));
+          const level = Math.round(absVal);
+          const inverseLevel = Math.max(0, 100 - level);
+          const meta = featureMeta[name] ?? { primary: name.replace('_', ' '), opposite: `Inverse ${name.replace('_', ' ')}` };
+          const primaryLabel = coef >= 0 ? meta.primary : meta.opposite;
+          const oppositeLabel = coef >= 0 ? meta.opposite : meta.primary;
           return (
             <div key={name} className="alpha-card">
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: 10, fontWeight: 800, color: 'var(--text3)', textTransform: 'uppercase' }}>{name.replace('_', ' ')}</span>
-                <span style={{ fontSize: 13, fontWeight: 800, color: coef > 0 ? 'var(--lime)' : 'var(--red)' }}>
-                  {coef > 0 ? '↑' : '↓'} {(Math.abs(coef) * 100).toFixed(2)}%
+                <span style={{ fontSize: 10, fontWeight: 800, color: 'var(--text3)', textTransform: 'uppercase' }}>{primaryLabel}</span>
+                <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--lime)' }}>
+                  ↑ {level}%
                 </span>
               </div>
               <div className="alpha-influence-bar">
                 <div
                   className="alpha-influence-fill"
                   style={{
-                    width: `${absVal}%`,
-                    background: coef > 0 ? 'var(--lime)' : 'var(--red)',
-                    boxShadow: `0 0 12px ${coef > 0 ? 'var(--lime)' : 'var(--red)'}44`
+                    width: `${level}%`,
+                    background: 'var(--lime)',
+                    boxShadow: '0 0 12px var(--lime)44'
                   }}
                 />
               </div>
-              <div style={{ marginTop: 8, fontSize: 9, fontWeight: 600, color: 'var(--text3)' }}>
-                {coef > 0 ? 'Positive' : 'Negative'} price correlation
+              <div style={{ marginTop: 8, fontSize: 9, fontWeight: 600, color: 'var(--text3)', display: 'flex', justifyContent: 'space-between' }}>
+                <span>{primaryLabel}: {level}%</span>
+                <span>{oppositeLabel}: {inverseLevel}%</span>
               </div>
             </div>
           );
@@ -221,16 +232,16 @@ function App() {
       .catch(() => setStats(null))
   }, [API_BASE])
 
-  // Fetch predictive insights
+  // Prefetch predictive insights early (landing/app load) so markets page feels instant
   useEffect(() => {
-    if (!API_BASE || page !== 'markets') return
+    if (!API_BASE || insightsLoading || predictiveInsights) return
     setInsightsLoading(true)
     fetch(`${API_BASE}/api/predictive_insights`)
       .then(res => res.json())
       .then(data => setPredictiveInsights(data))
       .catch(() => setPredictiveInsights(null))
       .finally(() => setInsightsLoading(false))
-  }, [API_BASE, page])
+  }, [API_BASE, insightsLoading, predictiveInsights])
 
   // Debounced market fetching with cancellation support
   useEffect(() => {
@@ -294,6 +305,7 @@ function App() {
   const handleAnalyzeMarket = async (m: Market) => {
     setAnalysisError(null)
     setAnalyzing(true)
+    setChatLoading(false)
     setSelectedMarket(m)
     go('analysis')
     try {
@@ -325,7 +337,21 @@ function App() {
           analysisResult.info_res,
           analysisResult.conf_res,
           val,
-          history
+          history,
+          {
+            extraContext: {
+              market_name: analysisResult.market_name,
+              wallet_intel: analysisResult.wallet_intel ?? null,
+              master_res: analysisResult.master_res,
+              recommendation: analysisResult.recommendation ?? null,
+              trades_count: analysisResult.trades_count,
+              current_price: analysisResult.current_price ?? null,
+              yes_vol: analysisResult.yes_vol ?? null,
+              no_vol: analysisResult.no_vol ?? null,
+              price_series_tail: (analysisResult.price_series ?? []).slice(-20),
+              recent_trades: (analysisResult.trades ?? []).slice(-10),
+            },
+          }
         )
         setChatMessages((prev) => [...prev, { role: 'bot', text: response || '' }])
       } catch {
@@ -348,9 +374,9 @@ function App() {
     : yesPct
   const sentimentNoPct = 100 - sentimentYesPct
   const rec = analysisResult?.recommendation
-  const tipHtml = rec
-    ? `<b>AI Recommendation:</b> ${rec.action}. ${rec.reasoning}`
-    : ''
+  const aiRecommendationText = rec
+    ? `${rec.action}${rec.action === 'HOLD / NEUTRAL' ? ' — no strong edge yet.' : ''}`
+    : 'No recommendation yet.'
 
   return (
     <>
@@ -359,7 +385,7 @@ function App() {
       {page !== 'landing' && (
         <nav className="nav" id="mainNav">
           <div className="nav-logo" onClick={() => go('markets')} role="button">
-            <div className="logo-paw"><img src="/reddog.png" alt="Big-Dawg" /></div>
+            <div className="logo-paw"><img src="/reddog-removebg-preview.png" alt="Big-Dawg" /></div>
             <span>Big<span className="logo-sup">-Dawg</span></span>
           </div>
           <div className="nav-crumb" id="navCrumb">
@@ -379,17 +405,7 @@ function App() {
 
       {/* LANDING */}
       <div className={`page ${page === 'landing' ? 'on' : ''}`} id="landingPage">
-        <span className="land-paw"><img src="/reddog.png" alt="" /></span>
-        <div className="land-title">Can you <em>trust</em><br />that bet?</div>
-        <div className="land-sub">Big-Dawg reads the signal behind every prediction market — so you know when to bet, and when to walk.</div>
-        <button type="button" className="land-cta" onClick={enterApp}>Browse Markets →</button>
-        <div className="land-stats">
-          <div className="lstat"><div className="lstat-val">{stats?.volume_tracked ?? '---'}</div><div className="lstat-lab">Volume Tracked</div></div>
-          <div style={{ width: 1, background: 'var(--border2)' }} />
-          <div className="lstat"><div className="lstat-val">{stats?.live_markets ?? '---'}</div><div className="lstat-lab">Live Markets</div></div>
-          <div style={{ width: 1, background: 'var(--border2)' }} />
-          <div className="lstat"><div className="lstat-val">{stats?.avg_analysis_time ?? '---'}</div><div className="lstat-lab">Avg Analysis</div></div>
-        </div>
+        <LandingPage onBrowseMarkets={enterApp} stats={stats} />
       </div>
 
       {/* MARKETS — real from API (Polymarket + logic engine) or mock */}
@@ -451,30 +467,27 @@ function App() {
                   <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '.07em', display: 'block', marginBottom: 4 }}>{m.event_title}</span>
                   {m.question}
                 </div>
-                <div style={{ flex: 1 }}>
-                  {(() => {
-                    const totalV = (m.yes_vol || 0) + (m.no_vol || 0);
-                    // Use canonical price fallback for parity
-                    const yesPct = totalV > 0
-                      ? Math.round((m.yes_vol || 0) / (totalV || 1) * 100)
-                      : Math.round((m.current_price ?? 0.5) * 100);
-                    const noPct = 100 - yesPct;
-                    const yesLab = m.yes_label && !['YES', 'PURCHASE YES'].includes(m.yes_label.toUpperCase()) ? m.yes_label.slice(0, 8) : 'YES';
-                    return (
-                      <div className="trust-mini" style={{ width: 100, gap: 4 }}>
-                        <div style={{ width: '100%', height: 4, background: 'var(--red)', borderRadius: 2, overflow: 'hidden', display: 'flex' }}>
-                          <div style={{ width: `${yesPct}%`, height: '100%', background: 'var(--lime)' }} />
-                        </div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', fontSize: 9, fontWeight: 800 }}>
-                          <span style={{ color: 'var(--lime)', letterSpacing: '-0.02em' }}>{yesLab.toUpperCase()} {yesPct}%</span>
-                          <span style={{ color: 'var(--red)', letterSpacing: '-0.02em' }}>NO {noPct}%</span>
-                        </div>
-                        <div className="tmini-lbl" style={{ fontSize: 7, marginTop: 0 }}>{totalV > 0 ? 'Volume Sentiment' : 'Price Sentiment'}</div>
-                      </div>
-                    );
-                  })()}
-                </div>
               </div>
+              {(() => {
+                const totalV = (m.yes_vol || 0) + (m.no_vol || 0)
+                const yesPct = totalV > 0
+                  ? Math.round((m.yes_vol || 0) / (totalV || 1) * 100)
+                  : Math.round((m.current_price ?? 0.5) * 100)
+                const noPct = 100 - yesPct
+                const yesLab = m.yes_label && !['YES', 'PURCHASE YES'].includes(m.yes_label.toUpperCase()) ? m.yes_label.slice(0, 8) : 'YES'
+                return (
+                  <div className="trust-mini market-yn-bottom" style={{ width: '100%', gap: 5 }}>
+                    <div style={{ width: '100%', height: 6, marginTop: 4, background: 'var(--red)', borderRadius: 3, overflow: 'hidden', display: 'flex' }}>
+                      <div style={{ width: `${yesPct}%`, height: '100%', background: 'var(--lime)' }} />
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', fontSize: 9, fontWeight: 800 }}>
+                      <span style={{ color: 'var(--lime)', letterSpacing: '-0.02em' }}>{yesLab.toUpperCase()} {yesPct}%</span>
+                      <span style={{ color: 'var(--red)', letterSpacing: '-0.02em' }}>NO {noPct}%</span>
+                    </div>
+                    <div className="tmini-lbl" style={{ fontSize: 7, marginTop: 0 }}>{totalV > 0 ? 'Volume Sentiment' : 'Price Sentiment'}</div>
+                  </div>
+                )
+              })()}
               <div className="bet-foot">
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <span>Vol ${typeof m.volume === 'number' ? m.volume.toLocaleString(undefined, { maximumFractionDigits: 0 }) : m.volume}</span>
@@ -570,14 +583,9 @@ function App() {
                 </div>
                 <div className="prob-row" style={{ position: 'relative', marginTop: 12 }}>
                   <div style={{ position: 'absolute', top: -14, left: 0, width: '100%', textAlign: 'center', fontSize: 9, fontWeight: 800, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '.08em' }}>Volume Sentiment (Trade Weighting)</div>
-                  <div className="prob-block"><div className="prob-pct yes" id="vYes">{sentimentYesPct}%</div><div className="prob-out">YES</div></div>
+                  <div className="prob-block"><div className="prob-pct yes" id="vYes">{yesPct}%</div><div className="prob-out">YES</div></div>
                   <div className="prob-sep" /><div className="prob-vs">vs</div><div className="prob-sep" />
-                  <div className="prob-block"><div className="prob-pct no" id="vNo">{sentimentNoPct}%</div><div className="prob-out">NO</div></div>
-                </div>
-                <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 8 }}>Market Price (Implied Probability)</div>
-                <div className="verdict-btns">
-                  <button type="button" className="vbet yes" id="vBetYes">Buy YES · {yesPct}¢</button>
-                  <button type="button" className="vbet no" id="vBetNo">Buy NO · {noPct}¢</button>
+                  <div className="prob-block"><div className="prob-pct no" id="vNo">{noPct}%</div><div className="prob-out">NO</div></div>
                 </div>
               </div>
 
@@ -724,12 +732,15 @@ function App() {
                   <div className="chat-card bento-card bento-chat">
                     <div className="chat-header">
                       <div className="chat-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <img src="/reddog.png" alt="" style={{ width: 20, height: 20, objectFit: 'contain', borderRadius: 4 }} />
+                        <img src="/reddog-removebg-preview.png" alt="" style={{ width: 20, height: 20, objectFit: 'contain', borderRadius: 4 }} />
                         Ask Big-Dawg
                       </div>
                       <div className="ai-tag">AI</div>
                     </div>
-                    <div className="chat-tip" id="chatTip" dangerouslySetInnerHTML={{ __html: tipHtml }} />
+                    <div className="chat-tip" id="chatTip">
+                      <b>AI Recommendation:</b>{' '}
+                      {aiRecommendationText}
+                    </div>
                     <div className="chat-log" id="chatLog">
                       {chatMessages.map((m, i) => (
                         <div key={i} className={`cmsg ${m.role === 'user' ? 'u' : 'b'}`}>
