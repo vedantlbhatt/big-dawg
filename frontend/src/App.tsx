@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { fetchMarkets, analyzeMarket, chat as apiChat } from './api'
+import { fetchMarkets, analyzeMarket, cancelMarketsFetch, chat as apiChat } from './api'
 import type { Market, AnalysisResult } from './types'
 
 type Page = 'landing' | 'markets' | 'analysis'
@@ -101,6 +101,8 @@ function App() {
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedMarket, setSelectedMarket] = useState<Market | null>(null)
   const [showInfoCard, setShowInfoCard] = useState(false)
+  const [debounceTimer, setDebounceTimer] = useState<ReturnType<typeof setTimeout> | null>(null)
+  const [searchCancellable, setSearchCancellable] = useState(false)
   const replyIdx = useRef(0)
 
   // Fetch global stats on mount
@@ -112,20 +114,46 @@ function App() {
       .catch(() => setStats(null))
   }, [API_BASE])
 
+  // Debounced market fetching with cancellation support
   useEffect(() => {
     if (!API_BASE || page !== 'markets') return
-    setMarketsLoading(true)
+    
+    // Clear previous timer (but keep loading state if fetch is in progress)
+    if (debounceTimer) clearTimeout(debounceTimer)
+    
+    // Set new timer
     setMarketsError(null)
-    fetchMarkets(searchQuery || undefined)
-      .then((list) => {
-        setApiMarkets(list)
-        setMarketsError(null)
-      })
-      .catch((e) => {
-        setApiMarkets([])
-        setMarketsError(e instanceof Error ? e.message : 'Failed to load markets')
-      })
-      .finally(() => setMarketsLoading(false))
+    const timer = setTimeout(() => {
+      setMarketsLoading(true)
+      setSearchCancellable(true)
+      fetchMarkets(searchQuery || undefined)
+        .then((list) => {
+          setApiMarkets(list)
+          setMarketsError(null)
+        })
+        .catch((e) => {
+          const errMsg = e instanceof Error ? e.message : 'Failed to load markets'
+          // Only show error if user didn't cancel
+          if (!errMsg.includes('AbortError')) {
+            setMarketsError(errMsg)
+          }
+          // Keep previous results visible on error
+          if (apiMarkets.length === 0) {
+            setApiMarkets([])
+          }
+        })
+        .finally(() => {
+          setMarketsLoading(false)
+          setSearchCancellable(false)
+        })
+    }, 300) // 300ms debounce
+    
+    setDebounceTimer(timer)
+    
+    return () => {
+      clearTimeout(timer)
+      // Don't clear searchCancellable here - let the fetch finish and cleanup naturally
+    }
   }, [API_BASE, page, searchQuery])
 
   const go = (p: Page) => {
@@ -141,11 +169,18 @@ function App() {
     go('markets')
   }
 
+  const handleCancelSearch = () => {
+    cancelMarketsFetch()
+    setMarketsLoading(false)
+    setSearchCancellable(false)
+    setMarketsError(null)  // Clear error immediately instead of showing "Search cancelled"
+  }
+
   const handleAnalyzeMarket = async (m: Market) => {
     setAnalysisError(null)
     setAnalyzing(true)
     setSelectedMarket(m)
-    setShowInfoCard(true)
+    go('analysis')
     try {
       const result = await analyzeMarket(m.slug || m.conditionId)
       setAnalysisResult(result)
@@ -241,16 +276,19 @@ function App() {
           </div>
         </div>
         {marketsError && API_BASE && (
-          <div style={{ padding: '12px 28px', marginBottom: 8, background: 'var(--red-dim)', border: '1px solid var(--red)', borderRadius: 12, color: 'var(--red)', fontSize: 13 }}>{marketsError}</div>
+          <div style={{ padding: '12px 28px', marginBottom: 8, background: 'var(--red-dim)', border: '1px solid var(--red)', borderRadius: 12, color: 'var(--red)', fontSize: 13, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span>{marketsError}</span>
+            {marketsLoading && <button type="button" onClick={handleCancelSearch} style={{ background: 'var(--red)', color: 'var(--bg)', border: 'none', padding: '4px 12px', borderRadius: 6, cursor: 'pointer', fontSize: 11, fontWeight: 600 }}>Cancel</button>}
+          </div>
         )}
         {analysisError && (
           <div style={{ padding: '12px 28px', marginBottom: 8, background: 'var(--red-dim)', border: '1px solid var(--red)', borderRadius: 12, color: 'var(--red)', fontSize: 13 }}>{analysisError}</div>
         )}
-        {marketsLoading && apiMarkets.length === 0 && (
-          <div style={{ padding: '12px 28px', color: 'var(--text2)', fontSize: 14 }}>Loading markets from Polymarket…</div>
-        )}
-        {analyzing && (
-          <div style={{ padding: '12px 28px', color: 'var(--text2)', fontSize: 14 }}>Running logic engine (integrity, information, confidence)…</div>
+        {marketsLoading && (
+          <div style={{ padding: '12px 28px', marginBottom: 8, background: 'var(--lime-dim)', border: '1px solid var(--lime)', borderRadius: 12, color: 'var(--lime)', fontSize: 13, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span>{apiMarkets.length === 0 ? 'Searching markets…' : 'Updating results…'}</span>
+            <button type="button" onClick={handleCancelSearch} style={{ background: 'var(--lime)', color: 'var(--bg)', border: 'none', padding: '4px 12px', borderRadius: 6, cursor: 'pointer', fontSize: 11, fontWeight: 600 }}>Cancel</button>
+          </div>
         )}
         {apiMarkets.length > 0 && (
           <div style={{ padding: '12px 28px', marginBottom: 8 }}>
@@ -312,6 +350,19 @@ function App() {
       {/* ANALYSIS */}
       <div className={`page ${page === 'analysis' ? 'on' : ''}`} id="analysisPage">
         <div className="analysis-wrap">
+          {analyzing && !analysisResult && (
+            <div style={{ textAlign: 'center', padding: 60, color: 'var(--text2)' }}>
+              <div style={{ fontSize: 18, marginBottom: 20 }}>Running intelligence engines...</div>
+              <div style={{ fontSize: 14, marginBottom: 10 }}>🔍 Analyzing integrity · 🧠 Information layer · 🎯 Confidence metrics</div>
+            </div>
+          )}
+          {analysisError && !analysisResult && (
+            <div style={{ textAlign: 'center', padding: 60, color: 'var(--red)' }}>
+              <div style={{ fontSize: 18, marginBottom: 10 }}>Analysis failed</div>
+              <div style={{ fontSize: 14, marginBottom: 20 }}>{analysisError}</div>
+              <button type="button" className="land-cta" onClick={() => go('markets')} style={{ margin: '0 auto' }}>Back to Markets</button>
+            </div>
+          )}
           {analysisResult && (
             <>
               <div className="verdict-hero">
