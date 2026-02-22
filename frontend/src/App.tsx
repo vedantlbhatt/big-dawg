@@ -286,14 +286,23 @@ function App() {
                   <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '.07em', display: 'block', marginBottom: 4 }}>{m.event_title}</span>
                   {m.question}
                 </div>
-                <div className="trust-mini">
-                  <div className={`tmini-num ${m.trust_score != null ? trustClass(m.trust_score) : 'risk'}`}>
-                    {m.trust_score != null ? m.trust_score : '---'}
-                  </div>
-                  <div className={`tmini-lbl ${m.trust_score != null ? (trustClass(m.trust_score) === 'trust' ? 'trust' : trustClass(m.trust_score) === 'caution' ? 'caution' : 'risk') : 'risk'}`}>
-                    {m.trust_score != null ? (trustClass(m.trust_score) === 'trust' ? 'Trusted' : trustClass(m.trust_score) === 'caution' ? 'Caution' : 'Risky') : 'Unscanned'}
-                  </div>
-                </div>
+                {(() => {
+                  const totalV = (m.yes_vol || 0) + (m.no_vol || 0);
+                  const yesPct = totalV > 0 ? Math.round((m.yes_vol || 0) / totalV * 100) : 50;
+                  const noPct = 100 - yesPct;
+                  return (
+                    <div className="trust-mini" style={{ width: 100, gap: 4 }}>
+                      <div style={{ width: '100%', height: 4, background: 'var(--red)', borderRadius: 2, overflow: 'hidden', display: 'flex' }}>
+                        <div style={{ width: `${yesPct}%`, height: '100%', background: 'var(--lime)' }} />
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', fontSize: 9, fontWeight: 800 }}>
+                        <span style={{ color: 'var(--lime)' }}>YES {yesPct}%</span>
+                        <span style={{ color: 'var(--red)' }}>NO {noPct}%</span>
+                      </div>
+                      <div className="tmini-lbl" style={{ fontSize: 7, marginTop: 0 }}>Outcome Capital</div>
+                    </div>
+                  );
+                })()}
               </div>
               <div className="bet-foot">
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
