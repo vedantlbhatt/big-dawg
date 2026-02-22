@@ -1,7 +1,9 @@
 import requests
 import pandas as pd
 import time
-from utils.cache_manager import get_cached_markets, set_cached_markets
+import sqlite3
+import os
+from utils.cache_manager import get_cached_markets, set_cached_markets, get_cached_scout, set_cached_scout
 
 MARKETS_URL = "https://gamma-api.polymarket.com/markets"
 
@@ -103,15 +105,57 @@ def fetch_markets(limit=200, query=None):
     if df.empty:
         return df
     
-    # Sort by balance (closest to 50/50 price)
-    df['balance_score'] = (df['current_price'] - 0.5).abs()
-    df = df.sort_values("balance_score", ascending=True).drop(columns=['balance_score'])
+    # Efficiently enrich with Trust Scores from Scout DB
+    df = enrich_with_trust_scores(df)
+    # Sort by trust_score descending
+    # Ensure trust_score is numeric for reliable sorting, treating None/NaN as 0 or last
+    if "trust_score" in df.columns:
+        df["trust_score_sort"] = pd.to_numeric(df["trust_score"], errors='coerce').fillna(-1)
+        df = df.sort_values(by="trust_score_sort", ascending=False).drop(columns=["trust_score_sort"])
     
     # Cache for subsequent requests (only if we got a good amount of data)
     if len(df) > 50:
         set_cached_markets(df)
-        print(f"✓ Cached {len(df)} markets for future requests")
+        print(f"✓ Cached {len(df)} sorted markets for future requests")
     
+    return df
+
+def enrich_with_trust_scores(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Enriches markets with trust scores (opportunity_score * 100) from scout.sqlite.
+    Handles NaN values for JSON compliance.
+    """
+    if df.empty:
+        return df
+        
+    db_path = "data/scout.sqlite"
+    if not os.path.exists(db_path):
+        df["trust_score"] = None
+        return df
+        
+    try:
+        # Check cache for scout results
+        scout_data = get_cached_scout("all")
+        if not scout_data:
+            conn = sqlite3.connect(db_path)
+            conn.execute("PRAGMA query_only = ON")
+            sdf = pd.read_sql_query("SELECT slug, opportunity_score FROM market_scores", conn)
+            conn.close()
+            
+            scout_data = {row['slug']: int(row['opportunity_score'] * 100) for _, row in sdf.iterrows()}
+            set_cached_scout("all", scout_data)
+            
+        # Map scores to dataframe (ensure no NaNs for JSON compliance)
+        df["trust_score"] = df["slug"].map(scout_data)
+        if "trust_score" in df.columns:
+            df["trust_score"] = df["trust_score"].where(pd.notna(df["trust_score"]), None)
+            
+        print(f"✓ Enriched {len(df)} markets with {len(scout_data)} scout trust scores")
+        
+    except Exception as e:
+        print(f"⚠ Could not enrich with trust scores: {e}")
+        df["trust_score"] = None
+
     return df
 
 
