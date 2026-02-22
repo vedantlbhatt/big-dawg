@@ -1912,6 +1912,104 @@ body::after {
   border-radius: 2px;
 }
 
+/* Predictive Alpha Dashboard */
+.alpha-dashboard {
+  margin: 0 28px 32px;
+  background: rgba(185, 247, 81, 0.02);
+  border: 1px solid rgba(185, 247, 81, 0.08);
+  border-radius: 16px;
+  padding: 24px;
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(8px);
+  animation: slideDown .6s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.alpha-dashboard::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--lime), transparent);
+  animation: sweep 3s infinite linear;
+}
+
+@keyframes sweep {
+  0% {
+    transform: translateX(-100%);
+  }
+
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.alpha-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 16px;
+}
+
+.alpha-card {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+  transition: all .3s ease;
+  position: relative;
+}
+
+.alpha-card:hover {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(185, 247, 81, 0.3);
+  transform: translateY(-2px);
+}
+
+.alpha-influence-bar {
+  height: 6px;
+  border-radius: 3px;
+  margin-top: 12px;
+  background: rgba(255, 255, 255, 0.05);
+  overflow: hidden;
+}
+
+.alpha-influence-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 1s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.alpha-r2-badge {
+  padding: 4px 12px;
+  border-radius: 100px;
+  font-size: 12px;
+  font-weight: 800;
+  background: var(--lime-dim);
+  color: var(--lime);
+  border: 1px solid rgba(185, 247, 81, 0.2);
+}
+
+.alpha-r2-badge.low {
+  background: var(--red-dim);
+  color: var(--red);
+  border-color: rgba(255, 84, 112, 0.2);
+}
+
 .cmsg {
   display: flex;
   flex-direction: column;

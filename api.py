@@ -22,7 +22,8 @@ from pydantic import BaseModel
 
 from utils.market_loader import fetch_markets
 from utils.data_loader import get_wallet_analysis
-from utils.fetch_data import fetch_trades, calculate_volume_split
+from utils.fetch_data import fetch_trades, calculate_volume_split, normalize_trade_prices
+from intelligence_layer.price_predictor import prepare_prediction_features, train_alpha_model
 from utils.cache_manager import get_cached_scout, set_cached_scout
 from utils.analysis_timer import analysis_timer, format_time_stat
 from confidence_layer.confidence import confidence_metrics
@@ -525,3 +526,39 @@ def chat(req: ChatRequest):
         return {"response": response or ""}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/predictive_insights")
+async def get_predictive_insights():
+    """
+    Scans top markets to train a cross-sectional alpha model.
+    """
+    try:
+        # 1. Fetch top markets
+        markets = fetch_markets()
+        top_markets = markets.head(12)  # Limit to top 12 for speed
+        
+        market_features = []
+        
+        # 2. Extract features for each market
+        for m in top_markets.itertuples():
+            try:
+                trades = fetch_trades(m.slug)
+                if trades.empty:
+                    continue
+                
+                # Normalize trades to 'YES' side
+                trades = normalize_trade_prices(trades, yes_label=m.yes_label)
+                
+                features = prepare_prediction_features(trades)
+                if features:
+                    market_features.append(features)
+            except Exception as e:
+                print(f"  ⚠ Error extracting features for {m.slug}: {e}")
+                
+        # 3. Train model
+        model_results = train_alpha_model(market_features)
+        return model_results
+        
+    except Exception as e:
+        print(f"Prediction Error: {e}")
+        return {"error": str(e)}

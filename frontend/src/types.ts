@@ -98,3 +98,11 @@ export interface ChatMessage {
   role: 'human' | 'assistant'
   content: string
 }
+
+export interface PredictiveInsights {
+  r2: number
+  coefficients: Record<string, number>
+  sample_size: number
+  intercept: number
+  error?: string
+}
