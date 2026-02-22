@@ -397,7 +397,7 @@ function App() {
                           <span style={{ color: 'var(--lime)', letterSpacing: '-0.02em' }}>{yesLab.toUpperCase()} {yesPct}%</span>
                           <span style={{ color: 'var(--red)', letterSpacing: '-0.02em' }}>NO {noPct}%</span>
                         </div>
-                        <div className="tmini-lbl" style={{ fontSize: 7, marginTop: 0 }}>{totalV > 0 ? 'Outcome Capital' : 'Price Sentiment'}</div>
+                        <div className="tmini-lbl" style={{ fontSize: 7, marginTop: 0 }}>{totalV > 0 ? 'Volume Sentiment' : 'Price Sentiment'}</div>
                       </div>
                     );
                   })()}
@@ -496,47 +496,16 @@ function App() {
                     {rec?.reasoning ?? analysisResult.integrity_res?.status ?? ''}
                   </div>
                 </div>
-
-                <div className="verdict-snapshot bento-card">
-                  <div className="snapshot-item">
-                    <div className="snapshot-k"><span className="pop-amber">Sentiment</span></div>
-                    <div className="snapshot-v yes"><span className="pop-lime">YES</span> {sentimentYesPct}%</div>
-                  </div>
-                  <div className="snapshot-item">
-                    <div className="snapshot-k"><span className="pop-amber">Entry price</span></div>
-                    <div className="snapshot-v"><span className="pop-lime">YES</span> {yesPct}¢ · <span className="pop-red">NO</span> {noPct}¢</div>
-                  </div>
-                  <div className="snapshot-item activity">
-                    <div className="snapshot-k"><span className="pop-amber">Recent activity</span></div>
-                    <div className="snapshot-v"><span className="pop-lime">{analysisResult.trades_count ?? 0}</span> raw trades</div>
-                    <div className="snapshot-trades-wrap">
-                      <table className="snapshot-trades">
-                        <thead><tr><th>Wallet</th><th>Time</th><th>Size</th><th>Side</th></tr></thead>
-                        <tbody>
-                          {analysisResult.trades?.slice(-5).reverse().map((t, idx) => (
-                            <tr key={idx}>
-                              <td className="st-wallet">{t.wallet}</td>
-                              <td>{t.timestamp.length > 10 ? new Date(t.timestamp).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : t.timestamp}</td>
-                              <td>${t.size.toLocaleString()}</td>
-                              <td className={t.side === 'BUY' ? 'st-buy' : 'st-sell'}>{t.side ?? ''}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
+                <div className="prob-row" style={{ position: 'relative', marginTop: 12 }}>
+                  <div style={{ position: 'absolute', top: -14, left: 0, width: '100%', textAlign: 'center', fontSize: 9, fontWeight: 800, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '.08em' }}>Volume Sentiment (Trade Weighting)</div>
+                  <div className="prob-block"><div className="prob-pct yes" id="vYes">{sentimentYesPct}%</div><div className="prob-out">YES</div></div>
+                  <div className="prob-sep" /><div className="prob-vs">vs</div><div className="prob-sep" />
+                  <div className="prob-block"><div className="prob-pct no" id="vNo">{sentimentNoPct}%</div><div className="prob-out">NO</div></div>
                 </div>
-
-                <div className="verdict-action-panel bento-card">
-                  <div className="prob-row">
-                    <div className="prob-block"><div className="prob-pct yes" id="vYes">{sentimentYesPct}%</div><div className="prob-out">YES</div></div>
-                    <div className="prob-sep" /><div className="prob-vs">vs</div><div className="prob-sep" />
-                    <div className="prob-block"><div className="prob-pct no" id="vNo">{sentimentNoPct}%</div><div className="prob-out">NO</div></div>
-                  </div>
-                  <div className="verdict-btns">
-                    <button type="button" className="vbet yes" id="vBetYes">Buy YES · {yesPct}¢</button>
-                    <button type="button" className="vbet no" id="vBetNo">Buy NO · {noPct}¢</button>
-                  </div>
+                <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 8 }}>Market Price (Implied Probability)</div>
+                <div className="verdict-btns">
+                  <button type="button" className="vbet yes" id="vBetYes">Buy YES · {yesPct}¢</button>
+                  <button type="button" className="vbet no" id="vBetNo">Buy NO · {noPct}¢</button>
                 </div>
               </div>
 
