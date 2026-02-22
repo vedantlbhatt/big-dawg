@@ -79,10 +79,13 @@ def _serialize_ts(ts):
 WALLET_INTEL_ROI_MIN = 0.15  # 15% ROI
 WALLET_INTEL_COST_BASIS_MIN = 10  # $10 min position
 WALLET_INTEL_MAX_WALLETS = 25  # cap for UI (all that pass threshold, up to this many)
+# Min cost basis for fallback when no stars pass (so we still show distribution)
+WALLET_INTEL_FALLBACK_COST_MIN = 1.0
 
 def _build_wallet_intel_for_ui(wallet_summary):
     """Build wallet intel from wallet_summary for React UI: lean, divergence, wallets with belief/side.
-    Uses same star criteria as logic_engine (ROI + cost_basis threshold), not fixed top-N by size."""
+    Uses same star criteria as logic_engine (ROI + cost_basis threshold). If no wallets pass,
+    falls back to top wallets by cost_basis so the distribution chart always plots."""
     if wallet_summary is None or wallet_summary.empty:
         return {
             "lean": "split",
@@ -96,10 +99,12 @@ def _build_wallet_intel_for_ui(wallet_summary):
         (wallet_summary["roi"] >= WALLET_INTEL_ROI_MIN) &
         (wallet_summary["cost_basis"] > WALLET_INTEL_COST_BASIS_MIN)
     ]
+    # If no stars pass, use top wallets by cost_basis (min $1) so distribution still has data
     if stars.empty:
-        return {"lean": "split", "leanPct": 50, "divergence": "Medium", "wallets": []}
-    # Sort by cost_basis desc, cap for UI
-    df = stars.sort_values("cost_basis", ascending=False).head(WALLET_INTEL_MAX_WALLETS)
+        fallback = wallet_summary[wallet_summary["cost_basis"] > WALLET_INTEL_FALLBACK_COST_MIN]
+        df = fallback.sort_values("cost_basis", ascending=False).head(WALLET_INTEL_MAX_WALLETS)
+    else:
+        df = stars.sort_values("cost_basis", ascending=False).head(WALLET_INTEL_MAX_WALLETS)
     if df.empty:
         return {"lean": "split", "leanPct": 50, "divergence": "Medium", "wallets": []}
     # Belief = avg_entry_price as 0-100 (YES probability)
@@ -122,9 +127,14 @@ def _build_wallet_intel_for_ui(wallet_summary):
         divergence = "Medium"
     else:
         divergence = "High"
+    mean_belief = float(beliefs.mean()) if not beliefs.empty else 50
     wallets = []
     for i, (_, row) in enumerate(df.iterrows()):
-        belief_pct = round(float(row["avg_entry_price"] * 100))
+        raw_belief = float(row["avg_entry_price"] * 100)
+        # Sell-only wallets have avg_entry_price 0; put them on NO side of distribution
+        if raw_belief == 0 and row["net_position"] < 0:
+            raw_belief = 100 - mean_belief
+        belief_pct = max(0, min(100, round(raw_belief)))
         side = "yes" if row["net_position"] > 0 else "no"
         addr = row["wallet"]
         short_addr = f"{addr[:6]}...{addr[-4:]}" if isinstance(addr, str) and len(addr) > 12 else str(addr)
@@ -180,7 +190,7 @@ def get_global_stats():
 
 
 @app.get("/api/markets")
-def get_markets(limit: int = 200, query: str = None, timeout: int = 8):
+def get_markets(limit: int = 200, query: str = None, timeout: int = 20):
     """Fetch active Polymarket markets with optional query.
     
     OPTIMIZED: Uses caching to avoid repeated API calls.
