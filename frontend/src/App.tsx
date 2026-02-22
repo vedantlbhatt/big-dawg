@@ -134,10 +134,15 @@ function PriceChartSVG({ priceSeries, currentPct }: { priceSeries: { timestamp: 
 }
 
 const PredictiveAlphaDashboard = ({ data, loading }: { data: PredictiveInsights | null; loading: boolean }) => {
-  if (loading) return <div className="alpha-dashboard" style={{ padding: 40, textAlign: 'center', opacity: 0.5 }}>Calculating global alpha signal...</div>;
+  if (loading) return <div className="alpha-dashboard" style={{ padding: 40, textAlign: 'center', opacity: 0.5 }}>Computing 30-min market alpha drivers...</div>;
   if (!data || data.error) return null;
 
   const features = Object.entries(data.coefficients).sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]));
+  const featureMeta: Record<string, { primary: string; opposite: string }> = {
+    whale_activity: { primary: 'Whale Activity', opposite: 'Retail Activity' },
+    order_imbalance: { primary: 'Buy Pressure', opposite: 'Sell Pressure' },
+    volatility: { primary: 'Volatility', opposite: 'Stability' },
+  };
 
   return (
     <div className="alpha-dashboard">
@@ -153,27 +158,33 @@ const PredictiveAlphaDashboard = ({ data, loading }: { data: PredictiveInsights 
 
       <div className="alpha-grid">
         {features.map(([name, coef]) => {
-          const absVal = Math.min(100, Math.abs(coef * 500)); // Normalized for display
+          const absVal = Math.min(100, Math.abs(coef * 500));
+          const level = Math.round(absVal);
+          const inverseLevel = Math.max(0, 100 - level);
+          const meta = featureMeta[name] ?? { primary: name.replace('_', ' '), opposite: `Inverse ${name.replace('_', ' ')}` };
+          const primaryLabel = coef >= 0 ? meta.primary : meta.opposite;
+          const oppositeLabel = coef >= 0 ? meta.opposite : meta.primary;
           return (
             <div key={name} className="alpha-card">
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: 10, fontWeight: 800, color: 'var(--text3)', textTransform: 'uppercase' }}>{name.replace('_', ' ')}</span>
-                <span style={{ fontSize: 13, fontWeight: 800, color: coef > 0 ? 'var(--lime)' : 'var(--red)' }}>
-                  {coef > 0 ? '↑' : '↓'} {(Math.abs(coef) * 100).toFixed(2)}%
+                <span style={{ fontSize: 10, fontWeight: 800, color: 'var(--text3)', textTransform: 'uppercase' }}>{primaryLabel}</span>
+                <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--lime)' }}>
+                  ↑ {level}%
                 </span>
               </div>
               <div className="alpha-influence-bar">
                 <div
                   className="alpha-influence-fill"
                   style={{
-                    width: `${absVal}%`,
-                    background: coef > 0 ? 'var(--lime)' : 'var(--red)',
-                    boxShadow: `0 0 12px ${coef > 0 ? 'var(--lime)' : 'var(--red)'}44`
+                    width: `${level}%`,
+                    background: 'var(--lime)',
+                    boxShadow: '0 0 12px var(--lime)44'
                   }}
                 />
               </div>
-              <div style={{ marginTop: 8, fontSize: 9, fontWeight: 600, color: 'var(--text3)' }}>
-                {coef > 0 ? 'Positive' : 'Negative'} price correlation
+              <div style={{ marginTop: 8, fontSize: 9, fontWeight: 600, color: 'var(--text3)', display: 'flex', justifyContent: 'space-between' }}>
+                <span>{primaryLabel}: {level}%</span>
+                <span>{oppositeLabel}: {inverseLevel}%</span>
               </div>
             </div>
           );
@@ -221,16 +232,16 @@ function App() {
       .catch(() => setStats(null))
   }, [API_BASE])
 
-  // Fetch predictive insights
+  // Prefetch predictive insights early (landing/app load) so markets page feels instant
   useEffect(() => {
-    if (!API_BASE || page !== 'markets') return
+    if (!API_BASE || insightsLoading || predictiveInsights) return
     setInsightsLoading(true)
     fetch(`${API_BASE}/api/predictive_insights`)
       .then(res => res.json())
       .then(data => setPredictiveInsights(data))
       .catch(() => setPredictiveInsights(null))
       .finally(() => setInsightsLoading(false))
-  }, [API_BASE, page])
+  }, [API_BASE, insightsLoading, predictiveInsights])
 
   // Debounced market fetching with cancellation support
   useEffect(() => {
@@ -374,7 +385,7 @@ function App() {
       {page !== 'landing' && (
         <nav className="nav" id="mainNav">
           <div className="nav-logo" onClick={() => go('markets')} role="button">
-            <div className="logo-paw"><img src="/reddog.png" alt="Big-Dawg" /></div>
+            <div className="logo-paw"><img src="/reddog-removebg-preview.png" alt="Big-Dawg" /></div>
             <span>Big<span className="logo-sup">-Dawg</span></span>
           </div>
           <div className="nav-crumb" id="navCrumb">
@@ -726,7 +737,7 @@ function App() {
                   <div className="chat-card bento-card bento-chat">
                     <div className="chat-header">
                       <div className="chat-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <img src="/reddog.png" alt="" style={{ width: 20, height: 20, objectFit: 'contain', borderRadius: 4 }} />
+                        <img src="/reddog-removebg-preview.png" alt="" style={{ width: 20, height: 20, objectFit: 'contain', borderRadius: 4 }} />
                         Ask Big-Dawg
                       </div>
                       <div className="ai-tag">AI</div>
