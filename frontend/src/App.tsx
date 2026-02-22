@@ -345,7 +345,10 @@ function App() {
                 <div style={{ flex: 1 }}>
                   {(() => {
                     const totalV = (m.yes_vol || 0) + (m.no_vol || 0);
-                    const yesPct = totalV > 0 ? Math.round((m.yes_vol || 0) / totalV * 100) : 50;
+                    // Use trust_score as fallback for yesPct if volume is missing
+                    const yesPct = totalV > 0
+                      ? Math.round((m.yes_vol || 0) / totalV * 100)
+                      : (m.trust_score !== null && m.trust_score !== undefined ? m.trust_score : 50);
                     const noPct = 100 - yesPct;
                     return (
                       <div className="trust-mini" style={{ width: 100, gap: 4 }}>
@@ -356,7 +359,7 @@ function App() {
                           <span style={{ color: 'var(--lime)', letterSpacing: '-0.02em' }}>YES {yesPct}%</span>
                           <span style={{ color: 'var(--red)', letterSpacing: '-0.02em' }}>NO {noPct}%</span>
                         </div>
-                        <div className="tmini-lbl" style={{ fontSize: 7, marginTop: 0 }}>Outcome Capital</div>
+                        <div className="tmini-lbl" style={{ fontSize: 7, marginTop: 0 }}>{totalV > 0 ? 'Outcome Capital' : 'Price Sentiment'}</div>
                       </div>
                     );
                   })()}

@@ -199,7 +199,7 @@ def get_markets(limit: int = 200, query: str = None):
 
 
 @app.post("/api/scout")
-def run_scout_task(limit: int = 10):
+def run_scout_task(limit: int = 40):
     """Trigger a new scan of markets from the backend."""
     from utils.market_scout import scout_markets
     try:
@@ -221,8 +221,13 @@ def analyze_market(req: AnalyzeRequest):
         raise HTTPException(status_code=502, detail=f"Failed to fetch trades: {e}")
     # Calculate YES/NO Volumes on FULL history for sentiment parity
     trades_df['outcome_norm'] = trades_df['outcome'].astype(str).str.strip().str.upper()
-    yes_vol = float(trades_df[trades_df['outcome_norm'].isin(['YES', 'PURCHASE YES'])]['size'].sum())
-    no_vol = float(trades_df[trades_df['outcome_norm'].isin(['NO', 'PURCHASE NO'])]['size'].sum())
+    
+    # Robust mapping for YES/NO pairs
+    yes_variants = ['YES', 'PURCHASE YES', 'TRUE', 'LONG', 'DEMS', 'DEMOCRATIC', 'OVER', 'WON']
+    no_variants = ['NO', 'PURCHASE NO', 'FALSE', 'SHORT', 'REPS', 'REPUBLICAN', 'UNDER', 'LOST']
+    
+    yes_vol = float(trades_df[trades_df['outcome_norm'].isin(yes_variants)]['size'].sum())
+    no_vol = float(trades_df[trades_df['outcome_norm'].isin(no_variants)]['size'].sum())
 
     # Align window to 2000 for engine parity with market_scout
     trades_df = trades_df.tail(2000)

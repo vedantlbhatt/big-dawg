@@ -24,42 +24,30 @@ def scout_markets(limit=10):
         condition_id = row['conditionId']
         
         try:
-            # 1. Parity Check: If this slug was just analyzed in the dashboard, use that data
-            from streamlit import session_state
-            if session_state.get("analysis_result") and session_state["analysis_result"].get("market_name") == slug:
-                trades_df = session_state["analysis_result"]["trades_df"]
-                price_series = session_state["analysis_result"]["price_series"]
-                wallet_summary = session_state["analysis_result"]["wallet_summary"]
-            else:
-                # 2. Standard Fetch: Use same window (up to 10k) but tail for efficiency
-                trades_df = fetch_trades(condition_id)
-                if trades_df.empty:
-                    continue
-                
-                # Calculate YES/NO Volumes on FULL history BEFORE tailing
-                trades_df['outcome_norm'] = trades_df['outcome'].astype(str).str.strip().str.upper()
-                yes_vol = float(trades_df[trades_df['outcome_norm'].isin(['YES', 'PURCHASE YES'])]['size'].sum())
-                no_vol = float(trades_df[trades_df['outcome_norm'].isin(['NO', 'PURCHASE NO'])]['size'].sum())
-
-                # Align window to 2000 for parity (matches Dashboard depth usually)
-                trades_df = trades_df.tail(2000)
-                price_series = trades_df.set_index("timestamp")["price"].resample("5min").last().ffill()
-                
-                wallet_summary = get_wallet_analysis(trades_df)
+            # 2. Standard Fetch: Use same window (up to 10k) but tail for efficiency
+            trades_df = fetch_trades(condition_id)
+            if trades_df.empty:
+                continue
             
-            # 3. Master Logic Engine (Single Source of Truth)
-            if wallet_summary is None or wallet_summary.empty:
-                wallet_summary = get_wallet_analysis(trades_df)
-                
+            # Calculate YES/NO Volumes on FULL history BEFORE tailing
+            trades_df['outcome_norm'] = trades_df['outcome'].astype(str).str.strip().str.upper()
+            
+            # Robust mapping for YES/NO pairs
+            yes_variants = ['YES', 'PURCHASE YES', 'TRUE', 'LONG', 'DEMS', 'DEMOCRATIC', 'OVER', 'WON']
+            no_variants = ['NO', 'PURCHASE NO', 'FALSE', 'SHORT', 'REPS', 'REPUBLICAN', 'UNDER', 'LOST']
+            
+            yes_vol = float(trades_df[trades_df['outcome_norm'].isin(yes_variants)]['size'].sum())
+            no_vol = float(trades_df[trades_df['outcome_norm'].isin(no_variants)]['size'].sum())
+
+            # Align window to 2000 for parity (matches Dashboard depth usually)
+            trades_df = trades_df.tail(2000)
+            price_series = trades_df.set_index("timestamp")["price"].resample("5min").last().ffill()
+            
+            wallet_summary = get_wallet_analysis(trades_df)
+            
             master_res = master_logic_engine(trades_df, price_series, wallet_summary)
             opportunity_score = master_res.get("overall_score", 0)
 
-            # 4. Calculate YES/NO Volumes (Already done above if standard fetch, but handle parity case)
-            if 'yes_vol' not in locals():
-                trades_df['outcome_norm'] = trades_df['outcome'].astype(str).str.strip().str.upper()
-                yes_vol = float(trades_df[trades_df['outcome_norm'].isin(['YES', 'PURCHASE YES'])]['size'].sum())
-                no_vol = float(trades_df[trades_df['outcome_norm'].isin(['NO', 'PURCHASE NO'])]['size'].sum())
-            
             # 4. Confidence metrics for additional radar axis
             conf_res = confidence_metrics(trades_df, price_series, integrity_score=master_res["integrity"]["score"])
 
