@@ -18,31 +18,31 @@ def _get_cache_file():
     os.makedirs(cache_dir, exist_ok=True)
     return os.path.join(cache_dir, "trades_cache.json")
 
-def fetch_trades(market_slug_or_id, max_trades=2000, timeout=15):
+def fetch_trades(market_slug_or_id, max_trades=10000, timeout=15):
     """
-    Fetches historical trade data for a specific market slug or ID.
-    OPTIMIZED: Uses caching, reduced iterations, and smart batching.
+    Fetches historical trade data for a specific market slug or ID (all-time by default).
+    Uses pagination to go back in time until no more data or cap is reached.
     
     Args:
         market_slug_or_id: Market slug or condition ID
-        max_trades: Maximum trades to fetch (capped at 2000)
-        timeout: Request timeout in seconds (reduced from 20 to 15)
+        max_trades: Maximum trades to fetch (capped at 10000 for all-time)
+        timeout: Request timeout in seconds
     
     Returns:
         DataFrame with trade data or empty DataFrame if none found
     """
-    # Enforce reasonable max
-    max_trades = min(max_trades, 2000)
-    
-    # Check TTL cache first (much faster)
-    cached = get_cached_trades(market_slug_or_id)
-    if cached is not None:
-        return cached
-    
-    # Check in-memory cache fallback
-    if market_slug_or_id in _trades_cache:
-        return _trades_cache[market_slug_or_id]
-    
+    # Cap for all-time history (allow large fetch)
+    max_trades = min(max_trades, 10000)
+
+    # Skip cache for all-time requests so we don't return old short-window data
+    use_cache = max_trades <= 2000
+    if use_cache:
+        cached = get_cached_trades(market_slug_or_id)
+        if cached is not None:
+            return cached
+        if market_slug_or_id in _trades_cache:
+            return _trades_cache[market_slug_or_id]
+
     condition_id = None
 
     # 1. Resolve to conditionId with timeout (reuse if already a condition ID)
@@ -89,7 +89,7 @@ def fetch_trades(market_slug_or_id, max_trades=2000, timeout=15):
         "market": condition_id
     }
     
-    max_iterations = 2  # REDUCED from 3 to 2 (1000 trades usually sufficient)
+    max_iterations = 20  # Paginate back for all-time (20 * 500 = up to 10k trades)
     iterations = 0
     
     print(f"🔄 Fetching trades for {market_slug_or_id}...")
@@ -153,14 +153,15 @@ def fetch_trades(market_slug_or_id, max_trades=2000, timeout=15):
     df = pd.DataFrame(processed)
     if df.empty:
         return df
-    
+
     # Ensure sorted chronologically
     df = df.sort_values("timestamp")
-    
-    # Cache both in-memory and TTL cache
-    _trades_cache[market_slug_or_id] = df
-    set_cached_trades(market_slug_or_id, df)
-    
+
+    # Cache only when we used cache for this request (short-window); don't overwrite with huge payloads for all-time
+    if use_cache:
+        _trades_cache[market_slug_or_id] = df
+        set_cached_trades(market_slug_or_id, df)
+
     return df
 
 

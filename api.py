@@ -311,14 +311,15 @@ def analyze_market(req: AnalyzeRequest):
     if not target:
         raise HTTPException(status_code=400, detail="target is required")
     
-    # Check cache first - highly optimized
-    if target in _analysis_cache:
-        cached_result, cached_time = _analysis_cache[target]
+    # Cache key includes version so old "short-window" cached results are not reused
+    _CACHE_KEY = f"{target}:alltime"
+    if _CACHE_KEY in _analysis_cache:
+        cached_result, cached_time = _analysis_cache[_CACHE_KEY]
         if time.time() - cached_time < CACHE_TTL:
             print(f"📦 Cache hit for {target}")
-            return cached_result  # Return cached result immediately
+            return cached_result
         else:
-            del _analysis_cache[target]  # Cache expired
+            del _analysis_cache[_CACHE_KEY]
     
     # Timeout wrapper for analysis
     import threading
@@ -330,16 +331,16 @@ def analyze_market(req: AnalyzeRequest):
             print(f"🔄 Analyzing {target}...")
             analysis_start = time.time()
             
-            # Fetch trade data with timeout - optimized fetch
-            trades_df = fetch_trades(target, max_trades=2000, timeout=12) 
+            # Fetch all-time trade data
+            trades_df = fetch_trades(target, max_trades=10000, timeout=15)
             if trades_df.empty:
                 result_container["error"] = "No trade data found for this market"
                 return
-            
-            print(f"  ✓ Fetched {len(trades_df)} trades in {time.time() - analysis_start:.2f}s")
-            
-            # Use recent trades for faster processing (most recent 1000 trades are most relevant)
-            analysis_trades = trades_df.tail(1000) if len(trades_df) > 1000 else trades_df
+
+            print(f"  ✓ Fetched {len(trades_df)} trades (all-time) in {time.time() - analysis_start:.2f}s")
+
+            # Use all trades for analysis (all-time data)
+            analysis_trades = trades_df
             
             # Try to resolve yes/no labels from metadata if available
             yes_label = "YES"
@@ -390,10 +391,17 @@ def analyze_market(req: AnalyzeRequest):
             except Exception:
                 market_name = target
             
-            # Price series for chart (up to 200 points)
+            # Price series for chart (all-time; downsample if > 1000 points for smooth rendering)
             price_list = []
-            ps_tail = price_series.tail(200)
-            for ts, val in ps_tail.items():
+            n_ps = len(price_series)
+            if n_ps <= 1000:
+                ps_send = price_series
+            else:
+                step = n_ps / 1000
+                indices = [int(i * step) for i in range(1000)] + [n_ps - 1]
+                indices = sorted(set(indices))
+                ps_send = price_series.iloc[indices]
+            for ts, val in ps_send.items():
                 price_list.append({"timestamp": _serialize_ts(ts), "price": round(float(val), 4)})
             
             # Trades for raw table (last 100)
@@ -485,7 +493,7 @@ def analyze_market(req: AnalyzeRequest):
     
     if result_container["result"]:
         # Cache the result
-        _analysis_cache[target] = (result_container["result"], time.time())
+        _analysis_cache[_CACHE_KEY] = (result_container["result"], time.time())
         return result_container["result"]
     
     raise HTTPException(status_code=500, detail="Analysis failed for unknown reason")

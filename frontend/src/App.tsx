@@ -62,74 +62,196 @@ const RadarChartSVG = ({ scores, size = 60 }: { scores: { wallet: number; integr
   );
 };
 
+// Light smoothing so the line looks like a regular graph, not step/blocky (Polymarket-style)
+function smoothPrices(prices: number[], window = 3): number[] {
+  if (prices.length < window) return prices
+  const out: number[] = []
+  const half = Math.floor(window / 2)
+  for (let i = 0; i < prices.length; i++) {
+    let sum = 0
+    let count = 0
+    for (let k = i - half; k <= i + half; k++) {
+      if (k >= 0 && k < prices.length) {
+        sum += prices[k]
+        count++
+      }
+    }
+    out.push(sum / count)
+  }
+  return out
+}
+
+// Build smooth cubic Bezier path (Catmull-Rom); use with smoothed data for a fluid line
+function smoothPathThroughPoints(pts: { x: number; y: number }[]): string {
+  if (pts.length < 2) return ''
+  if (pts.length === 2) return `M ${pts[0].x} ${pts[0].y} L ${pts[1].x} ${pts[1].y}`
+  let d = `M ${pts[0].x} ${pts[0].y}`
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = pts[Math.max(0, i - 1)]
+    const p1 = pts[i]
+    const p2 = pts[i + 1]
+    const p3 = pts[Math.min(pts.length - 1, i + 2)]
+    const c1x = p1.x + (p2.x - p0.x) / 6
+    const c1y = p1.y + (p2.y - p0.y) / 6
+    const c2x = p2.x - (p3.x - p1.x) / 6
+    const c2y = p2.y - (p3.y - p1.y) / 6
+    d += ` C ${c1x} ${c1y} ${c2x} ${c2y} ${p2.x} ${p2.y}`
+  }
+  return d
+}
+
+function formatChartDate(ts: string): string {
+  const d = new Date(ts)
+  if (isNaN(d.getTime())) return ts
+  const mon = d.toLocaleDateString('en-US', { month: 'short' })
+  const day = d.getDate()
+  const year = d.getFullYear()
+  const thisYear = new Date().getFullYear()
+  return year !== thisYear ? `${mon} ${day}, ${year}` : `${mon} ${day}`
+}
+
 function PriceChartSVG({ priceSeries, currentPct }: { priceSeries: { timestamp: string; price: number }[]; currentPct: number }) {
+  const svgRef = useRef<SVGSVGElement>(null)
+  const [hovered, setHovered] = useState<{ index: number; x: number; y: number } | null>(null)
+
   const w = 600
   const h = 160
   const padding = { left: 38, right: 22, top: 20, bottom: 20 }
   const plotH = h - padding.top - padding.bottom
   const plotW = w - padding.left - padding.right
 
+  // Normalized Y scale: enforce minimum range so 2% data doesn't fill the whole graph (Polymarket-style)
+  const MIN_RANGE = 0.10 // 10% minimum vertical range
   let minP = 0
-  let maxP = 100
+  let maxP = 1
 
-  if (priceSeries.length >= 2) {
-    const rawMin = Math.min(...priceSeries.map((d) => d.price))
-    const rawMax = Math.max(...priceSeries.map((d) => d.price))
-    const buffer = (rawMax - rawMin) * 0.1 || 0.05
-    minP = Math.max(0, rawMin - buffer)
-    maxP = Math.min(1, rawMax + buffer)
+  // Smoothed prices for drawing (less blocky/static); scale Y from smoothed so line fits
+  const smoothedPrices = priceSeries.length >= 2
+    ? smoothPrices(priceSeries.map((d) => d.price), 5)
+    : []
+  if (priceSeries.length >= 2 && smoothedPrices.length > 0) {
+    const rawMin = Math.min(...smoothedPrices)
+    const rawMax = Math.max(...smoothedPrices)
+    const dataRange = rawMax - rawMin
+    const halfRange = Math.max(dataRange / 2, MIN_RANGE / 2)
+    const center = (rawMin + rawMax) / 2
+    minP = Math.max(0, center - halfRange)
+    maxP = Math.min(1, center + halfRange)
   }
 
   const range = maxP - minP || 1
   const pts = priceSeries.length >= 2
     ? priceSeries.map((d, i) => ({
       x: padding.left + (i / (priceSeries.length - 1)) * plotW,
-      y: padding.top + (1 - (d.price - minP) / range) * plotH
+      y: padding.top + (1 - ((smoothedPrices[i] ?? d.price) - minP) / range) * plotH
     }))
     : []
 
-  const linePath = pts.length >= 2 ? pts.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ') : ''
+  const linePath = smoothPathThroughPoints(pts)
   const areaPath = pts.length >= 2 ? linePath + ` L${pts[pts.length - 1].x},${h} L${pts[0].x},${h} Z` : ''
   const lastX = pts.length >= 2 ? pts[pts.length - 1].x : padding.left
   const lastY = pts.length >= 2 ? pts[pts.length - 1].y : h / 2
 
-  // Dynamic Ticks
+  // Real date labels for X-axis (first, 1/4, 1/2, 3/4, last)
+  const xLabels: { x: number; label: string }[] = []
+  if (priceSeries.length >= 2) {
+    const indices = [0, Math.floor(priceSeries.length * 0.25), Math.floor(priceSeries.length * 0.5), Math.floor(priceSeries.length * 0.75), priceSeries.length - 1]
+    const uniq = [...new Set(indices)]
+    uniq.forEach((i) => {
+      const ts = priceSeries[i]?.timestamp
+      xLabels.push({
+        x: padding.left + (i / (priceSeries.length - 1)) * plotW,
+        label: ts ? formatChartDate(ts) : (i === 0 ? 'Start' : i === priceSeries.length - 1 ? 'Now' : '')
+      })
+    })
+  }
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    const svg = svgRef.current
+    if (!svg || priceSeries.length < 2) return
+    const rect = svg.getBoundingClientRect()
+    const x = ((e.clientX - rect.left) / rect.width) * w
+    const relX = (x - padding.left) / plotW
+    const index = Math.round(relX * (priceSeries.length - 1))
+    const i = Math.max(0, Math.min(index, priceSeries.length - 1))
+    const point = priceSeries[i]
+    const px = padding.left + (i / (priceSeries.length - 1)) * plotW
+    const py = padding.top + (1 - (point.price - minP) / range) * plotH
+    setHovered({ index: i, x: px, y: py })
+  }
+
+  const handleMouseLeave = () => setHovered(null)
+
+  // Dynamic ticks from normalized range
   const ticks = [maxP, maxP - (range * 0.33), maxP - (range * 0.66), minP]
 
+  const displayPoint = hovered !== null ? priceSeries[hovered.index] : null
+
   return (
-    <svg className="price-svg" viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none">
-      <defs>
-        <linearGradient id="ca" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#b9f751" stopOpacity={0.14} />
-          <stop offset="100%" stopColor="#b9f751" stopOpacity={0} />
-        </linearGradient>
-      </defs>
-      <g className="c-grid">
-        {ticks.map((_, i) => (
-          <line key={i} x1="0" y1={padding.top + (i / 3) * plotH} x2="600" y2={padding.top + (i / 3) * plotH} />
-        ))}
-      </g>
-      <g className="c-axis">
-        {ticks.map((t, i) => (
-          <text key={i} x="2" y={padding.top + (i / 3) * plotH + 3}>{Math.round(t * 100)}%</text>
-        ))}
-      </g>
-      <g className="c-axis">
-        <text x="38" y="158">Start</text>
-        <text x="295" y="158">Mid</text>
-        <text x="552" y="158">Now</text>
-      </g>
-      {pts.length >= 2 && (
-        <>
-          <path className="c-area" d={areaPath} />
-          <path className="c-line" d={linePath} />
-          <circle cx={lastX} cy={lastY} r="4" fill="#b9f751" />
-          <circle cx={lastX} cy={lastY} r="9" fill="#b9f751" opacity={0.14} />
-          <rect x={lastX + 4} y={lastY - 10} width="32" height="15" rx="4" fill="rgba(185,247,81,.14)" stroke="rgba(185,247,81,.3)" strokeWidth={0.5} />
-          <text x={lastX + 20} y={lastY - 0.5} textAnchor="middle" fontSize="8" fill="#b9f751" fontFamily="Figtree" fontWeight="700">{currentPct}%</text>
-        </>
-      )}
-    </svg>
+    <div
+      className="price-chart-container"
+      onMouseMove={handleMouseMove}
+      onMouseLeave={handleMouseLeave}
+      style={{ position: 'relative', width: '100%', height: '100%' }}
+    >
+      <svg ref={svgRef} className="price-svg" viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="xMidYMid meet">
+        <defs>
+          <linearGradient id="ca" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#b9f751" stopOpacity={0.14} />
+            <stop offset="100%" stopColor="#b9f751" stopOpacity={0} />
+          </linearGradient>
+        </defs>
+        <g className="c-grid">
+          {ticks.map((_, i) => (
+            <line key={i} x1="0" y1={padding.top + (i / 3) * plotH} x2={w} y2={padding.top + (i / 3) * plotH} />
+          ))}
+        </g>
+        <g className="c-axis">
+          {ticks.map((t, i) => (
+            <text key={i} x="2" y={padding.top + (i / 3) * plotH + 3}>{Math.round(t * 100)}%</text>
+          ))}
+        </g>
+        <g className="c-axis c-axis-time">
+          {xLabels.map(({ x, label }, i) => (
+            <text key={i} x={x} y={h - 4} textAnchor={i === 0 ? 'start' : i === xLabels.length - 1 ? 'end' : 'middle'}>{label}</text>
+          ))}
+        </g>
+        {pts.length >= 2 && (
+          <>
+            <path className="c-area" d={areaPath} />
+            <path className="c-line" d={linePath} />
+            {/* Single prominent point at current value (Polymarket-style); show dot on hover */}
+            {hovered !== null && (
+              <circle cx={pts[hovered.index].x} cy={pts[hovered.index].y} r="4" fill="#b9f751" className="c-dot c-dot-hover" />
+            )}
+            <circle cx={lastX} cy={lastY} r="4" fill="#b9f751" className="c-last" />
+            <circle cx={lastX} cy={lastY} r="9" fill="#b9f751" opacity={0.14} />
+            {displayPoint && hovered && (
+              <g className="c-tooltip">
+                {(() => {
+                  const tw = 48
+                  const th = 20
+                  const tx = hovered.x + 6 > w - padding.right - tw ? hovered.x - tw - 6 : hovered.x + 6
+                  const ty = hovered.y - 12
+                  return (
+                    <>
+                      <rect x={tx} y={ty} width={tw} height={th} rx="6" fill="rgba(20,20,20,.9)" stroke="rgba(185,247,81,.4)" strokeWidth={0.5} />
+                      <text x={tx + tw / 2} y={ty + th / 2 + 0.5} textAnchor="middle" fontSize="10" fill="#b9f751" fontFamily="Figtree" fontWeight="700">{Math.round(displayPoint.price * 100)}%</text>
+                    </>
+                  )
+                })()}
+              </g>
+            )}
+            {!displayPoint && (
+              <>
+                <rect x={lastX + 4} y={lastY - 10} width="32" height="15" rx="4" fill="rgba(185,247,81,.14)" stroke="rgba(185,247,81,.3)" strokeWidth={0.5} />
+                <text x={lastX + 20} y={lastY - 0.5} textAnchor="middle" fontSize="8" fill="#b9f751" fontFamily="Figtree" fontWeight="700">{currentPct}%</text>
+              </>
+            )}
+          </>
+        )}
+      </svg>
+    </div>
   )
 }
 
@@ -702,7 +824,7 @@ function App() {
                       <div className="analysis-section-sub">Price path and latest executed trades.</div>
                     </div>
                     <div className="chart-header">
-                      <div><div className="chart-title">Price over time</div><div className="chart-sub">Implied YES probability · 5-min intervals</div></div>
+                      <div><div className="chart-title">Price over time</div><div className="chart-sub">Implied YES probability · 5-min intervals · All-time</div></div>
                     </div>
                     <div className="chart-wrap">
                       <PriceChartSVG priceSeries={analysisResult.price_series ?? []} currentPct={yesPct} />
