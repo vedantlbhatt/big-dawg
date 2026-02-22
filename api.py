@@ -215,8 +215,14 @@ def analyze_market(req: AnalyzeRequest):
         trades_df = fetch_trades(target)
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Failed to fetch trades: {e}")
-    if trades_df.empty:
-        raise HTTPException(status_code=404, detail="No trade data found for this market")
+    # Calculate YES/NO Volumes on FULL history for sentiment parity
+    trades_df['outcome_norm'] = trades_df['outcome'].astype(str).str.strip().str.upper()
+    yes_vol = float(trades_df[trades_df['outcome_norm'].isin(['YES', 'PURCHASE YES'])]['size'].sum())
+    no_vol = float(trades_df[trades_df['outcome_norm'].isin(['NO', 'PURCHASE NO'])]['size'].sum())
+
+    # Align window to 2000 for engine parity with market_scout
+    trades_df = trades_df.tail(2000)
+    
     # Resample price for confidence
     price_series = trades_df.set_index("timestamp")["price"].resample("5min").last().ffill()
     wallet_summary = get_wallet_analysis(trades_df)
@@ -237,11 +243,6 @@ def analyze_market(req: AnalyzeRequest):
         market_name = target
 
     # Feedback Loop: Update the scout database so the card Trust Score matches this live analysis
-    # Calculate YES/NO Volumes for the feedback loop
-    trades_df['outcome_norm'] = trades_df['outcome'].astype(str).str.strip().str.upper()
-    yes_vol = float(trades_df[trades_df['outcome_norm'].isin(['YES', 'PURCHASE YES'])]['size'].sum())
-    no_vol = float(trades_df[trades_df['outcome_norm'].isin(['NO', 'PURCHASE NO'])]['size'].sum())
-
     from utils.data_loader import save_scout_result
     save_scout_result(
         target,
@@ -316,6 +317,8 @@ def analyze_market(req: AnalyzeRequest):
         "price_series": price_list,
         "trades": trades_list,
         "trades_count": len(trades_df),
+        "yes_vol": yes_vol,
+        "no_vol": no_vol,
     }
 
 

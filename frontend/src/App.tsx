@@ -189,6 +189,12 @@ function App() {
   const trustCls = trustClass(trustScore)
   const yesPct = Math.round((analysisResult?.conf_res?.probability ?? 0) * 100)
   const noPct = 100 - yesPct
+
+  const totalV = (analysisResult?.yes_vol || 0) + (analysisResult?.no_vol || 0)
+  const sentimentYesPct = totalV > 0
+    ? Math.round((analysisResult?.yes_vol || 0) / totalV * 100)
+    : yesPct
+  const sentimentNoPct = 100 - sentimentYesPct
   const rec = analysisResult?.recommendation
   const tipHtml = rec
     ? `<b>AI Recommendation:</b> ${rec.action}. ${rec.reasoning}`
@@ -288,23 +294,25 @@ function App() {
                   <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '.07em', display: 'block', marginBottom: 4 }}>{m.event_title}</span>
                   {m.question}
                 </div>
-                {(() => {
-                  const totalV = (m.yes_vol || 0) + (m.no_vol || 0);
-                  const yesPct = totalV > 0 ? Math.round((m.yes_vol || 0) / totalV * 100) : 50;
-                  const noPct = 100 - yesPct;
-                  return (
-                    <div className="trust-mini" style={{ width: 100, gap: 4 }}>
-                      <div style={{ width: '100%', height: 4, background: 'var(--red)', borderRadius: 2, overflow: 'hidden', display: 'flex' }}>
-                        <div style={{ width: `${yesPct}%`, height: '100%', background: 'var(--lime)' }} />
+                <div style={{ flex: 1 }}>
+                  {(() => {
+                    const totalV = (m.yes_vol || 0) + (m.no_vol || 0);
+                    const yesPct = totalV > 0 ? Math.round((m.yes_vol || 0) / totalV * 100) : 50;
+                    const noPct = 100 - yesPct;
+                    return (
+                      <div className="trust-mini" style={{ width: 100, gap: 4 }}>
+                        <div style={{ width: '100%', height: 4, background: 'var(--red)', borderRadius: 2, overflow: 'hidden', display: 'flex' }}>
+                          <div style={{ width: `${yesPct}%`, height: '100%', background: 'var(--lime)' }} />
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', fontSize: 9, fontWeight: 800 }}>
+                          <span style={{ color: 'var(--lime)', letterSpacing: '-0.02em' }}>YES {yesPct}%</span>
+                          <span style={{ color: 'var(--red)', letterSpacing: '-0.02em' }}>NO {noPct}%</span>
+                        </div>
+                        <div className="tmini-lbl" style={{ fontSize: 7, marginTop: 0 }}>Outcome Capital</div>
                       </div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', fontSize: 9, fontWeight: 800 }}>
-                        <span style={{ color: 'var(--lime)' }}>YES {yesPct}%</span>
-                        <span style={{ color: 'var(--red)' }}>NO {noPct}%</span>
-                      </div>
-                      <div className="tmini-lbl" style={{ fontSize: 7, marginTop: 0 }}>Outcome Capital</div>
-                    </div>
-                  );
-                })()}
+                    );
+                  })()}
+                </div>
               </div>
               <div className="bet-foot">
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -372,9 +380,9 @@ function App() {
                   {rec?.reasoning ?? analysisResult.integrity_res?.status ?? ''}
                 </div>
                 <div className="prob-row">
-                  <div className="prob-block"><div className="prob-pct yes" id="vYes">{yesPct}%</div><div className="prob-out">YES</div></div>
+                  <div className="prob-block"><div className="prob-pct yes" id="vYes">{sentimentYesPct}%</div><div className="prob-out">YES</div></div>
                   <div className="prob-sep" /><div className="prob-vs">vs</div><div className="prob-sep" />
-                  <div className="prob-block"><div className="prob-pct no" id="vNo">{noPct}%</div><div className="prob-out">NO</div></div>
+                  <div className="prob-block"><div className="prob-pct no" id="vNo">{sentimentNoPct}%</div><div className="prob-out">NO</div></div>
                 </div>
                 <div className="verdict-btns">
                   <button type="button" className="vbet yes" id="vBetYes">Buy YES · {yesPct}¢</button>

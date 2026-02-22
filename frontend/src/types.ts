@@ -82,6 +82,8 @@ export interface AnalysisResult {
   price_series: { timestamp: string; price: number }[]
   trades: { wallet: string; timestamp: string; size: number; price: number; side: string }[]
   trades_count: number
+  yes_vol?: number
+  no_vol?: number
 }
 
 export interface ChatMessage {
