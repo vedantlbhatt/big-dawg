@@ -279,6 +279,7 @@ def get_markets(limit: int = 200, query: str = None, timeout: int = 8):
             "integrity_score": scout['integrity_score'] if scout is not None else 0,
             "conf_score": scout['conf_score'] if scout is not None else 0,
             "yes_label": str(r.get("yes_label", "YES")),
+            "no_label": str(r.get("no_label", "NO")),
             "current_price": float(r.get("current_price", 0.5)),
         })
     
@@ -343,8 +344,9 @@ def analyze_market(req: AnalyzeRequest):
             price_series = analysis_trades.set_index("timestamp")["price"].resample("5min").last().ffill()
             wallet_summary = get_wallet_analysis(analysis_trades)
             
-            # Try to resolve yes_label from metadata if available
+            # Try to resolve yes/no labels from metadata if available
             yes_label = "YES"
+            no_label = "NO"
             if not analysis_trades.empty:
                 try:
                     res = requests.get(GAMMA_URL, params={"slug": target}, timeout=5)
@@ -356,11 +358,12 @@ def analyze_market(req: AnalyzeRequest):
                             outcomes = json.loads(outcomes_raw)
                             if outcomes:
                                 yes_label = outcomes[0]
+                                no_label = outcomes[1] if len(outcomes) > 1 else "NO"
                 except Exception:
                     pass
 
             # Calculate volume split for sync
-            yes_vol, no_vol = calculate_volume_split(trades_df, yes_label=yes_label)
+            yes_vol, no_vol = calculate_volume_split(trades_df, yes_label=yes_label, no_label=no_label)
             
             # Run master logic engine
             master_res = master_logic_engine(analysis_trades, price_series, wallet_summary)
@@ -444,7 +447,6 @@ def analyze_market(req: AnalyzeRequest):
                 "wallet_intel": wallet_intel,
                 "yes_vol": yes_vol,
                 "no_vol": no_vol,
-                "current_price": float(yes_vol / (yes_vol + no_vol + 1e-9)) if (yes_vol + no_vol) > 0 else 0.5,
                 "price_series": price_list,
                 "trades": trades_list,
                 "trades_count": len(analysis_trades),

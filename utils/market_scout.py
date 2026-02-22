@@ -30,7 +30,11 @@ def scout_markets(limit=10):
                 continue
             
             # Calculate YES/NO Volumes on FULL history BEFORE tailing
-            yes_vol, no_vol = calculate_volume_split(trades_df, yes_label=row.get('yes_label'))
+            yes_vol, no_vol = calculate_volume_split(
+                trades_df, 
+                yes_label=row.get('yes_label'),
+                no_label=row.get('no_label')
+            )
 
             # Align window to 2000 for parity (matches Dashboard depth usually)
             trades_df = trades_df.tail(2000)

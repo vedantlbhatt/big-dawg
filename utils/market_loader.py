@@ -16,7 +16,6 @@ def fetch_markets(limit=200, query=None):
     Returns:
         DataFrame with markets sorted by volume
     """
-    # If no search query, try to use cached market list
     if not query:
         cached_df = get_cached_markets()
         if cached_df is not None:
@@ -57,10 +56,13 @@ def fetch_markets(limit=200, query=None):
                         import json
                         outcomes = json.loads(outcomes_raw)
                         yes_label = outcomes[0] if outcomes else "YES"
+                        no_label = outcomes[1] if len(outcomes) > 1 else "NO"
                     else:
                         yes_label = "YES"
+                        no_label = "NO"
                 except Exception:
                     yes_label = "YES"
+                    no_label = "NO"
                 
                 try:
                     prices_raw = m.get("outcomePrices")
@@ -80,6 +82,7 @@ def fetch_markets(limit=200, query=None):
                     "volume": float(m.get("volume", 0)),
                     "conditionId": m.get("conditionId"),
                     "yes_label": yes_label,
+                    "no_label": no_label,
                     "current_price": current_price
                 })
 
@@ -100,8 +103,9 @@ def fetch_markets(limit=200, query=None):
     if df.empty:
         return df
     
-    # Sort by volume descending (highest liquidity first)
-    df = df.sort_values("volume", ascending=False)
+    # Sort by balance (closest to 50/50 price)
+    df['balance_score'] = (df['current_price'] - 0.5).abs()
+    df = df.sort_values("balance_score", ascending=True).drop(columns=['balance_score'])
     
     # Cache for subsequent requests (only if we got a good amount of data)
     if len(df) > 50:

@@ -189,10 +189,10 @@ def fetch_user_positions(address):
     return pd.DataFrame()
 
 
-def calculate_volume_split(trades_df, yes_label=None):
+def calculate_volume_split(trades_df, yes_label=None, no_label=None):
     """
     Calculates YES/NO volume split with robust label mapping.
-    Combines robust global variants with the canonical yes_label if provided.
+    Uses market-specific labels if provided, otherwise falls back to defaults.
     """
     if trades_df.empty:
         return 0.0, 0.0
@@ -200,24 +200,44 @@ def calculate_volume_split(trades_df, yes_label=None):
     df = trades_df.copy()
     df['outcome_norm'] = df['outcome'].astype(str).str.strip().str.upper()
     
-    # Global Robust mapping for YES/NO pairs
-    yes_variants = {'YES', 'PURCHASE YES', 'TRUE', 'LONG', 'DEMS', 'DEMOCRATIC', 'OVER', 'WON', 'WIN'}
-    no_variants = {'NO', 'PURCHASE NO', 'FALSE', 'SHORT', 'REPS', 'REPUBLICAN', 'UNDER', 'LOST', 'LOSS'}
-    
+    # 1. Identity the labels to look for
+    yes_val = "YES"
+    no_val = "NO"
+
     if yes_label:
-        yl_norm = str(yes_label).strip().upper()
-        # Ensure the canonical label is in our set
-        yes_variants.add(yl_norm)
+        yes_val = str(yes_label).strip().upper()
+    if no_label:
+        no_val = str(no_label).strip().upper()
     
+    # Fallback to defaults if labels are identical (shouldn't happen with good metadata)
+    if yes_val == no_val:
+        yes_val, no_val = "YES", "NO"
+
+    # Define robust variants but prioritize the explicit labels if they differ
+    yes_variants = {'YES', 'PURCHASE YES', 'TRUE', 'LONG', 'WON', 'WIN'}
+    no_variants = {'NO', 'PURCHASE NO', 'FALSE', 'SHORT', 'LOST', 'LOSS'}
+    
+    # Ensure current labels are in the sets
+    yes_variants.add(yes_val)
+    no_variants.add(no_val)
+
     # Calculate dollar volume (size * price)
     df['vol_usd'] = df['size'] * df['price']
     
-    yes_vol = float(df[df['outcome_norm'].isin(yes_variants)]['vol_usd'].sum())
-    # If we have a yes_label, "NO" is everything else. 
-    # If not, we use the specific no_variants to avoid including noise as "NO".
-    if yes_label:
-        no_vol = float(df[~df['outcome_norm'].isin(yes_variants)]['vol_usd'].sum())
-    else:
-        no_vol = float(df[df['outcome_norm'].isin(no_variants)]['vol_usd'].sum())
+    # Strict matching: First try explicit labels
+    yes_df = df[df['outcome_norm'] == yes_val]
+    no_df = df[df['outcome_norm'] == no_val]
+    
+    # Fallback to variants if nothing found with explicit labels
+    if yes_df.empty and no_df.empty:
+        yes_df = df[df['outcome_norm'].isin(yes_variants)]
+        no_df = df[df['outcome_norm'].isin(no_variants)]
+    
+    yes_vol = float(yes_df['vol_usd'].sum())
+    no_vol = float(no_df['vol_usd'].sum())
+    
+    # Log the result for verification
+    slug = trades_df['slug'].iloc[0] if 'slug' in trades_df.columns and not trades_df.empty else "unknown"
+    print(f"📊 Volume Split [{slug}]: {yes_val}={yes_vol:.2f} | {no_val}={no_vol:.2f}")
     
     return yes_vol, no_vol
