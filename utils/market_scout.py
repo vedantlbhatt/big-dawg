@@ -60,6 +60,9 @@ def scout_markets(limit=10):
                 yes_vol = float(trades_df[trades_df['outcome_norm'].isin(['YES', 'PURCHASE YES'])]['size'].sum())
                 no_vol = float(trades_df[trades_df['outcome_norm'].isin(['NO', 'PURCHASE NO'])]['size'].sum())
             
+            # 4. Confidence metrics for additional radar axis
+            conf_res = confidence_metrics(trades_df, price_series, integrity_score=master_res["integrity"]["score"])
+
             save_scout_result(
                 slug, 
                 round(opportunity_score, 3), 
@@ -67,7 +70,11 @@ def scout_markets(limit=10):
                 master_res["information"]["classification"],
                 event_title=row.get('event_title'),
                 yes_val=yes_vol,
-                no_val=no_vol
+                no_val=no_vol,
+                wallet_score=master_res["wallet_intelligence"]["score"],
+                integrity_score=master_res["integrity"]["score"],
+                info_score=master_res["information"]["score"],
+                conf_score=conf_res["confidence_score"]
             )
             scanned_count += 1
             

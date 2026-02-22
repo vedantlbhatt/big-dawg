@@ -163,7 +163,7 @@ def get_markets(limit: int = 200, query: str = None):
         if os.path.exists("data/scout.sqlite"):
             import sqlite3
             conn = sqlite3.connect("data/scout.sqlite")
-            sdf = pd.read_sql_query("SELECT slug, opportunity_score, integrity_status, classification, yes_val, no_val FROM market_scores", conn)
+            sdf = pd.read_sql_query("SELECT slug, opportunity_score, integrity_status, classification, yes_val, no_val, wallet_score, integrity_score, info_score, conf_score FROM market_scores", conn)
             conn.close()
             for _, r in sdf.iterrows():
                 scout_data[r['slug']] = r
@@ -188,6 +188,10 @@ def get_markets(limit: int = 200, query: str = None):
             "classification": scout['classification'] if scout is not None else None,
             "yes_vol": scout['yes_val'] if scout is not None else 0,
             "no_vol": scout['no_val'] if scout is not None else 0,
+            "wallet_score": scout['wallet_score'] if scout is not None else 0,
+            "integrity_score": scout['integrity_score'] if scout is not None else 0,
+            "info_score": scout['info_score'] if scout is not None else 0,
+            "conf_score": scout['conf_score'] if scout is not None else 0,
         })
     # Sort by trust_score descending (None -> 0)
     rows.sort(key=lambda x: x["trust_score"] or 0, reverse=True)
@@ -251,7 +255,11 @@ def analyze_market(req: AnalyzeRequest):
         info_res.get("classification", ""),
         event_title=market_name,
         yes_val=yes_vol,
-        no_val=no_vol
+        no_val=no_vol,
+        wallet_score=master_res["wallet_intelligence"]["score"],
+        integrity_score=integrity_res["score"],
+        info_score=info_res["score"],
+        conf_score=conf_res["confidence_score"]
     )
 
     recommendation = get_recommendation(integrity_res, info_res, conf_res)
@@ -288,6 +296,7 @@ def analyze_market(req: AnalyzeRequest):
             },
         },
         "info_res": {
+            "score": info_res.get("score", 0),
             "classification": info_res.get("classification", ""),
             "components": {
                 "informed_score": info_comp.get("informed_score", 0),
