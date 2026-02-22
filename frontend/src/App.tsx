@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { fetchMarkets, analyzeMarket, cancelMarketsFetch, chat as apiChat } from './api'
-import type { Market, AnalysisResult } from './types'
 import LandingPage from './LandingPage'
+import type { Market, AnalysisResult, PredictiveInsights } from './types'
 
 type Page = 'landing' | 'markets' | 'analysis'
 
@@ -133,6 +133,63 @@ function PriceChartSVG({ priceSeries, currentPct }: { priceSeries: { timestamp: 
   )
 }
 
+const PredictiveAlphaDashboard = ({ data, loading }: { data: PredictiveInsights | null; loading: boolean }) => {
+  if (loading) return <div className="alpha-dashboard" style={{ padding: 40, textAlign: 'center', opacity: 0.5 }}>Calculating global alpha signal...</div>;
+  if (!data || data.error) return null;
+
+  const features = Object.entries(data.coefficients).sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]));
+  const isHighConfidence = data.r2 > 0.3;
+
+  return (
+    <div className="alpha-dashboard">
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24, position: 'relative', zIndex: 1 }}>
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+            <div style={{ fontSize: 10, fontWeight: 800, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '.1em' }}>Alpha Engine v1</div>
+          </div>
+          <h2 style={{ fontSize: 20, fontWeight: 800, margin: 0, color: 'var(--text)', fontFamily: 'var(--serif)', fontStyle: 'italic' }}>Real-time Alpha Analysis</h2>
+          <p style={{ fontSize: 12, color: 'var(--text2)', marginTop: 4 }}>Identifying behavioral signals driving 30-min price momentum across 12 markets.</p>
+        </div>
+      </div>
+
+      <div className="alpha-grid">
+        {features.map(([name, coef]) => {
+          const absVal = Math.min(100, Math.abs(coef * 500)); // Normalized for display
+          return (
+            <div key={name} className="alpha-card">
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: 10, fontWeight: 800, color: 'var(--text3)', textTransform: 'uppercase' }}>{name.replace('_', ' ')}</span>
+                <span style={{ fontSize: 13, fontWeight: 800, color: coef > 0 ? 'var(--lime)' : 'var(--red)' }}>
+                  {coef > 0 ? '↑' : '↓'} {(Math.abs(coef) * 100).toFixed(2)}%
+                </span>
+              </div>
+              <div className="alpha-influence-bar">
+                <div
+                  className="alpha-influence-fill"
+                  style={{
+                    width: `${absVal}%`,
+                    background: coef > 0 ? 'var(--lime)' : 'var(--red)',
+                    boxShadow: `0 0 12px ${coef > 0 ? 'var(--lime)' : 'var(--red)'}44`
+                  }}
+                />
+              </div>
+              <div style={{ marginTop: 8, fontSize: 9, fontWeight: 600, color: 'var(--text3)' }}>
+                {coef > 0 ? 'Positive' : 'Negative'} price correlation
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div style={{ marginTop: 20, display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 12 }}>
+        <div style={{ fontSize: 9, fontWeight: 600, color: 'var(--text3)', opacity: 0.6 }}>
+          Sample Size: {data.sample_size} Markets
+        </div>
+      </div>
+    </div >
+  );
+};
+
 function App() {
   const [page, setPage] = useState<Page>('landing')
   const [overlayOn, setOverlayOn] = useState(false)
@@ -143,9 +200,11 @@ function App() {
   const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null)
   const [analyzing, setAnalyzing] = useState(false)
   const [analysisError, setAnalysisError] = useState<string | null>(null)
+  const [predictiveInsights, setPredictiveInsights] = useState<PredictiveInsights | null>(null)
+  const [insightsLoading, setInsightsLoading] = useState(false)
   const [walletsExpanded, setWalletsExpanded] = useState(false)
-  const [tradesOpen, setTradesOpen] = useState(false)
   const [chatMessages, setChatMessages] = useState<{ role: 'user' | 'bot'; text: string }[]>([])
+  const [chatLoading, setChatLoading] = useState(false)
   const [chatInput, setChatInput] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedMarket, setSelectedMarket] = useState<Market | null>(null)
@@ -162,6 +221,17 @@ function App() {
       .then((data) => setStats(data))
       .catch(() => setStats(null))
   }, [API_BASE])
+
+  // Fetch predictive insights
+  useEffect(() => {
+    if (!API_BASE || page !== 'markets') return
+    setInsightsLoading(true)
+    fetch(`${API_BASE}/api/predictive_insights`)
+      .then(res => res.json())
+      .then(data => setPredictiveInsights(data))
+      .catch(() => setPredictiveInsights(null))
+      .finally(() => setInsightsLoading(false))
+  }, [API_BASE, page])
 
   // Debounced market fetching with cancellation support
   useEffect(() => {
@@ -231,6 +301,7 @@ function App() {
       const result = await analyzeMarket(m.slug || m.conditionId)
       setAnalysisResult(result)
       setChatMessages([])
+      setChatLoading(false)
       replyIdx.current = 0
     } catch (e) {
       setAnalysisError(e instanceof Error ? e.message : 'Analysis failed')
@@ -243,11 +314,12 @@ function App() {
 
   const sendMsg = async () => {
     const val = chatInput.trim()
-    if (!val) return
+    if (!val || chatLoading) return
     setChatMessages((prev) => [...prev, { role: 'user', text: val }])
     setChatInput('')
     if (analysisResult) {
       try {
+        setChatLoading(true)
         const history = chatMessages.map((m) => ({ role: m.role === 'user' ? 'human' : 'assistant', content: m.text }))
         const response = await apiChat(
           analysisResult.integrity_res,
@@ -259,6 +331,8 @@ function App() {
         setChatMessages((prev) => [...prev, { role: 'bot', text: response || '' }])
       } catch {
         setChatMessages((prev) => [...prev, { role: 'bot', text: 'Chat is unavailable. Set up the backend and GEMINI_API_KEY.' }])
+      } finally {
+        setChatLoading(false)
       }
     }
   }
@@ -317,6 +391,8 @@ function App() {
             {apiMarkets.length > 0 ? `Live Polymarket data · ${apiMarkets.length} markets · Click to run logic-engine analysis.` : marketsError ? 'Could not load markets. Is the backend running?' : 'Loading markets from Polymarket…'}
           </div>
         </div>
+
+        <PredictiveAlphaDashboard data={predictiveInsights} loading={insightsLoading} />
         {marketsError && API_BASE && (
           <div style={{ padding: '12px 28px', marginBottom: 8, background: 'var(--red-dim)', border: '1px solid var(--red)', borderRadius: 12, color: 'var(--red)', fontSize: 13, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span>{marketsError}</span>
@@ -436,15 +512,12 @@ function App() {
           )}
           {analysisResult && (
             <>
-              <div className="verdict-hero">
-                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginBottom: 12, padding: '4px 10px', background: 'var(--lime-dim)', border: '1px solid rgba(185,247,81,.25)', borderRadius: 8, fontSize: 11, fontWeight: 700, color: 'var(--lime)' }}>
+              <div className="verdict-hero bento-hero">
+                <div className="verdict-meta-pill">
                   Live · Polymarket data · Logic engine
                 </div>
-                <div className="verdict-mkt-row">
-                  <div className="verdict-mkt-emoji">🗳</div>
-                  <div className="verdict-mkt-name" id="vName">{displayMarketName}</div>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 40, justifyContent: 'center', marginBottom: 24 }}>
+
+                <div className="verdict-score-row bento-card">
                   <div className="trust-ring">
                     <svg viewBox="0 0 148 148">
                       <circle className="ring-bg" cx="74" cy="74" r="58" />
@@ -473,11 +546,18 @@ function App() {
                     }} />
                   </div>
                 </div>
-                <div className="verdict-line" id="vLine">
-                  {analysisResult.master_res?.verdict ?? 'Neutral'}
-                </div>
-                <div className="verdict-desc" id="vDesc">
-                  {rec?.reasoning ?? analysisResult.integrity_res?.status ?? ''}
+
+                <div className="verdict-primary bento-card">
+                  <div className="verdict-mkt-row">
+                    <div className="verdict-mkt-emoji">🗳</div>
+                    <div className="verdict-mkt-name" id="vName">{displayMarketName}</div>
+                  </div>
+                  <div className="verdict-line" id="vLine">
+                    {analysisResult.master_res?.verdict ?? 'Neutral'}
+                  </div>
+                  <div className="verdict-desc" id="vDesc">
+                    {rec?.reasoning ?? analysisResult.integrity_res?.status ?? ''}
+                  </div>
                 </div>
                 <div className="prob-row" style={{ position: 'relative', marginTop: 12 }}>
                   <div style={{ position: 'absolute', top: -14, left: 0, width: '100%', textAlign: 'center', fontSize: 9, fontWeight: 800, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '.08em' }}>Volume Sentiment (Trade Weighting)</div>
@@ -492,70 +572,57 @@ function App() {
                 </div>
               </div>
 
-              <div className="analysis-body">
-                <div className="analysis-left">
-                  <div className="tiles-row">
-                    {(() => {
-                      const ic = analysisResult.integrity_res?.components
-                      const iCls = analysisResult.integrity_res?.score && analysisResult.integrity_res.score < 0.3 ? 'bad' : analysisResult.integrity_res?.score && analysisResult.integrity_res.score < 0.6 ? 'ok' : 'good'
-                      const iAns = analysisResult.integrity_res?.status ?? ''
-                      const iDesc = `Score ${((analysisResult.integrity_res?.score ?? 0) * 100).toFixed(0)}% · Analysis of 5 risk vectors.`
-                      return (
-                        <div className={`tile ${iCls}`} id="tile1">
-                          <div className="tile-icon">🛡️</div>
-                          <div className="tile-q">Is the market healthy?</div>
-                          <div className={`tile-answer ${iCls}`} id="t1ans">{iAns}</div>
-                          <div className="tile-desc" id="t1desc">{iDesc}</div>
-                          <div className="tile-bars">
-                            <div className="tbar-row"><span className="tbar-name">Whale</span><div className="tbar-track"><div className="tbar-fill" style={{ width: `${((ic?.whale_risk ?? 0) * 100).toFixed(0)}%`, background: 'var(--lime)' }} /></div><span className="tbar-val">{(ic?.whale_risk ?? 0).toFixed(2)}</span></div>
-                            <div className="tbar-row"><span className="tbar-name">Flip</span><div className="tbar-track"><div className="tbar-fill" style={{ width: `${((ic?.flip_risk ?? 0) * 100).toFixed(0)}%`, background: 'var(--lime)' }} /></div><span className="tbar-val">{(ic?.flip_risk ?? 0).toFixed(2)}</span></div>
-                            <div className="tbar-row"><span className="tbar-name">Cluster</span><div className="tbar-track"><div className="tbar-fill" style={{ width: `${((ic?.cluster_risk ?? 0) * 100).toFixed(0)}%`, background: 'var(--lime)' }} /></div><span className="tbar-val">{(ic?.cluster_risk ?? 0).toFixed(2)}</span></div>
+              <div className="analysis-body bento-layout">
+                <div className="analysis-left bento-column-main">
+                  <div className="bento-card bento-signals">
+                    <div className="analysis-section-head">
+                      <div className="analysis-section-title">Core signal breakdown</div>
+                      <div className="analysis-section-sub">The two strongest inputs driving this market call.</div>
+                    </div>
+                    <div className="tiles-row full-analysis-tiles">
+                      {(() => {
+                        const ic = analysisResult.integrity_res?.components
+                        const iCls = analysisResult.integrity_res?.score && analysisResult.integrity_res.score < 0.3 ? 'bad' : analysisResult.integrity_res?.score && analysisResult.integrity_res.score < 0.6 ? 'ok' : 'good'
+                        const iAns = analysisResult.integrity_res?.status ?? ''
+                        const iDesc = `Score ${((analysisResult.integrity_res?.score ?? 0) * 100).toFixed(0)}% · Analysis of 5 risk vectors.`
+                        return (
+                          <div className={`tile ${iCls}`} id="tile1">
+                            <div className="tile-icon">🛡️</div>
+                            <div className="tile-q">Is the market healthy?</div>
+                            <div className={`tile-answer ${iCls}`} id="t1ans">{iAns}</div>
+                            <div className="tile-desc" id="t1desc">{iDesc}</div>
+                            <div className="tile-bars">
+                              <div className="tbar-row"><span className="tbar-name">Whale</span><div className="tbar-track"><div className="tbar-fill" style={{ width: `${((ic?.whale_risk ?? 0) * 100).toFixed(0)}%`, background: 'var(--lime)' }} /></div><span className="tbar-val">{(ic?.whale_risk ?? 0).toFixed(2)}</span></div>
+                              <div className="tbar-row"><span className="tbar-name">Flip</span><div className="tbar-track"><div className="tbar-fill" style={{ width: `${((ic?.flip_risk ?? 0) * 100).toFixed(0)}%`, background: 'var(--lime)' }} /></div><span className="tbar-val">{(ic?.flip_risk ?? 0).toFixed(2)}</span></div>
+                              <div className="tbar-row"><span className="tbar-name">Cluster</span><div className="tbar-track"><div className="tbar-fill" style={{ width: `${((ic?.cluster_risk ?? 0) * 100).toFixed(0)}%`, background: 'var(--lime)' }} /></div><span className="tbar-val">{(ic?.cluster_risk ?? 0).toFixed(2)}</span></div>
+                            </div>
                           </div>
-                        </div>
-                      )
-                    })()}
-                    {(() => {
-                      const inf = analysisResult.info_res?.components
-                      const infCls = inf && (inf.informed_score ?? 0) > 0.5 ? 'good' : (inf?.whale_score ?? 0) > 0.4 ? 'ok' : 'bad'
-                      const sAns = analysisResult.info_res?.classification ?? ''
-                      const sDesc = `Informed ${((inf?.informed_score ?? 0) * 100).toFixed(0)}%, Retail ${((inf?.retail_score ?? 0) * 100).toFixed(0)}%, Whale ${((inf?.whale_score ?? 0) * 100).toFixed(0)}%`
-                      return (
-                        <div className={`tile ${infCls}`} id="tile2">
-                          <div className="tile-icon">🧠</div>
-                          <div className="tile-q">Who's trading it?</div>
-                          <div className={`tile-answer ${infCls}`} id="t2ans">{sAns}</div>
-                          <div className="tile-desc" id="t2desc">{sDesc}</div>
-                          <div className="tile-bars">
-                            <div className="tbar-row"><span className="tbar-name">Informed</span><div className="tbar-track"><div className="tbar-fill" style={{ width: `${((inf?.informed_score ?? 0) * 100).toFixed(0)}%`, background: 'var(--lime)' }} /></div><span className="tbar-val">{((inf?.informed_score ?? 0) * 100).toFixed(0)}%</span></div>
-                            <div className="tbar-row"><span className="tbar-name">Whale</span><div className="tbar-track"><div className="tbar-fill" style={{ width: `${((inf?.whale_score ?? 0) * 100).toFixed(0)}%`, background: 'var(--purple)' }} /></div><span className="tbar-val">{((inf?.whale_score ?? 0) * 100).toFixed(0)}%</span></div>
-                            <div className="tbar-row"><span className="tbar-name">Retail</span><div className="tbar-track"><div className="tbar-fill" style={{ width: `${((inf?.retail_score ?? 0) * 100).toFixed(0)}%`, background: 'var(--blue)' }} /></div><span className="tbar-val">{((inf?.retail_score ?? 0) * 100).toFixed(0)}%</span></div>
+                        )
+                      })()}
+                      {(() => {
+                        const cq = analysisResult.conf_res?.data_quality ?? 0
+                        const cv = analysisResult.conf_res?.conviction_score ?? 0
+                        const confCls = trustClass(cq * 100)
+                        const cAns = analysisResult.conf_res?.confidence_level ?? ''
+                        const cDesc = `Data quality ${(cq * 100).toFixed(0)}%, Conviction ${(cv * 100).toFixed(0)}%`
+                        return (
+                          <div className={`tile ${confCls}`} id="tile3">
+                            <div className="tile-icon">🎯</div>
+                            <div className="tile-q">How sure is the signal?</div>
+                            <div className={`tile-answer ${confCls}`} id="t3ans">{cAns}</div>
+                            <div className="tile-desc" id="t3desc">{cDesc}</div>
+                            <div className="tile-bars">
+                              <div className="tbar-row"><span className="tbar-name">Quality</span><div className="tbar-track"><div className="tbar-fill" style={{ width: `${(cq * 100).toFixed(0)}%`, background: 'var(--lime)' }} /></div><span className="tbar-val">{(cq * 100).toFixed(0)}%</span></div>
+                              <div className="tbar-row"><span className="tbar-name">Conviction</span><div className="tbar-track"><div className="tbar-fill" style={{ width: `${(cv * 100).toFixed(0)}%`, background: 'var(--purple)' }} /></div><span className="tbar-val">{(cv * 100).toFixed(0)}%</span></div>
+                            </div>
                           </div>
-                        </div>
-                      )
-                    })()}
-                    {(() => {
-                      const cq = analysisResult.conf_res?.data_quality ?? 0
-                      const cv = analysisResult.conf_res?.conviction_score ?? 0
-                      const confCls = trustClass(cq * 100)
-                      const cAns = analysisResult.conf_res?.confidence_level ?? ''
-                      const cDesc = `Data quality ${(cq * 100).toFixed(0)}%, Conviction ${(cv * 100).toFixed(0)}%`
-                      return (
-                        <div className={`tile ${confCls}`} id="tile3">
-                          <div className="tile-icon">🎯</div>
-                          <div className="tile-q">How sure is the signal?</div>
-                          <div className={`tile-answer ${confCls}`} id="t3ans">{cAns}</div>
-                          <div className="tile-desc" id="t3desc">{cDesc}</div>
-                          <div className="tile-bars">
-                            <div className="tbar-row"><span className="tbar-name">Quality</span><div className="tbar-track"><div className="tbar-fill" style={{ width: `${(cq * 100).toFixed(0)}%`, background: 'var(--lime)' }} /></div><span className="tbar-val">{(cq * 100).toFixed(0)}%</span></div>
-                            <div className="tbar-row"><span className="tbar-name">Conviction</span><div className="tbar-track"><div className="tbar-fill" style={{ width: `${(cv * 100).toFixed(0)}%`, background: 'var(--purple)' }} /></div><span className="tbar-val">{(cv * 100).toFixed(0)}%</span></div>
-                          </div>
-                        </div>
-                      )
-                    })()}
+                        )
+                      })()}
+                    </div>
                   </div>
 
                   {walletIntel && (
-                    <div className="wallet-intel-card">
+                    <div className="wallet-intel-card bento-card bento-wallet">
                       <div className="wi-header">
                         <div className="wi-header-left">
                           <div className="wi-label">🧠 Wallet Intel</div>
@@ -629,44 +696,23 @@ function App() {
                     </div>
                   )}
 
-                  <div className="chart-card">
+                  <div className="chart-card bento-card bento-chart">
+                    <div className="analysis-section-head">
+                      <div className="analysis-section-title">Market activity</div>
+                      <div className="analysis-section-sub">Price path and latest executed trades.</div>
+                    </div>
                     <div className="chart-header">
                       <div><div className="chart-title">Price over time</div><div className="chart-sub">Implied YES probability · 5-min intervals</div></div>
-                      <div className="time-btns">
-                        <div className="tbtn on">1D</div><div className="tbtn">7D</div><div className="tbtn">30D</div><div className="tbtn">ALL</div>
-                      </div>
                     </div>
                     <div className="chart-wrap">
                       <PriceChartSVG priceSeries={analysisResult.price_series ?? []} currentPct={yesPct} />
                     </div>
                   </div>
 
-                  <div className={`trades-card ${tradesOpen ? 'open' : ''}`} id="tradesCard">
-                    <div className="trades-tog" onClick={() => setTradesOpen((x) => !x)} role="button" tabIndex={0}>
-                      <span>Raw trades <span style={{ color: 'var(--text3)', fontSize: 11, fontWeight: 500 }}>· {analysisResult.trades_count ?? 0} trades</span></span>
-                      <span className="trades-arrow">▼</span>
-                    </div>
-                    <div className="trades-body">
-                      <table className="trades-tbl">
-                        <thead><tr><th>Wallet</th><th>Time</th><th>Size</th><th>Price</th><th>Side</th></tr></thead>
-                        <tbody>
-                          {analysisResult.trades?.slice(-5).reverse().map((t, idx) => (
-                            <tr key={idx}>
-                              <td className="td-addr">{t.wallet}</td>
-                              <td>{t.timestamp.length > 10 ? new Date(t.timestamp).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : t.timestamp}</td>
-                              <td>${t.size.toLocaleString()}</td>
-                              <td>{t.price ?? 0}</td>
-                              <td className={t.side === 'BUY' ? 'td-buy' : 'td-sell'}>{t.side ?? ''}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
                 </div>
 
-                <div className="analysis-right">
-                  <div className="chat-card">
+                <div className="analysis-right bento-column-side">
+                  <div className="chat-card bento-card bento-chat">
                     <div className="chat-header">
                       <div className="chat-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                         <img src="/reddog.png" alt="" style={{ width: 20, height: 20, objectFit: 'contain', borderRadius: 4 }} />
@@ -682,6 +728,14 @@ function App() {
                           <div className="cbubble">{m.text}</div>
                         </div>
                       ))}
+                      {chatLoading && (
+                        <div className="cmsg b typing-msg" aria-live="polite" aria-label="Big-Dawg is thinking">
+                          <span className="crole">Big-Dawg</span>
+                          <div className="cbubble typing-bubble">
+                            <span className="typing-dots"><span /><span /><span /></span>
+                          </div>
+                        </div>
+                      )}
                     </div>
                     <div className="chat-in-row">
                       <input
