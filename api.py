@@ -30,7 +30,14 @@ from utils.gemini_chat import chat_with_stats
 app = FastAPI(title="Big-Dawg API")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:5174",
+        "http://127.0.0.1:5174",
+        "http://localhost:5175",
+        "http://127.0.0.1:5175",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -142,10 +149,14 @@ def get_global_stats():
 
 
 @app.get("/api/markets")
-def get_markets(limit: int = 200):
+def get_markets(limit: int = 200, query: str = None):
     """Fetch active Polymarket markets and join with pre-scanned scout results."""
+    if query:
+        limit = 5000  # Fetch more when searching
     try:
-        df = fetch_markets(limit=limit)
+        df = fetch_markets(limit=limit, query=None)  # Don't pass query to API, filter here
+        if query:
+            df = df[df['question'].str.contains(query, case=False, na=False) | df['event_title'].str.contains(query, case=False, na=False)]
         
         # Try to join with scout results for signals (Trust Score, Lean)
         scout_data = {}
