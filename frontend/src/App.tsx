@@ -699,7 +699,7 @@ function App() {
                   <div className="bento-card bento-signals">
                     <div className="analysis-section-head">
                       <div className="analysis-section-title">Core signal breakdown</div>
-                      <div className="analysis-section-sub">The two strongest inputs driving this market call.</div>
+                      <div className="analysis-section-sub">Market health and risk vectors.</div>
                     </div>
                     <div className="tiles-row full-analysis-tiles">
                       {(() => {
@@ -717,25 +717,6 @@ function App() {
                               <div className="tbar-row"><span className="tbar-name">Whale</span><div className="tbar-track"><div className="tbar-fill" style={{ width: `${((ic?.whale_risk ?? 0) * 100).toFixed(0)}%`, background: 'var(--lime)' }} /></div><span className="tbar-val">{(ic?.whale_risk ?? 0).toFixed(2)}</span></div>
                               <div className="tbar-row"><span className="tbar-name">Flip</span><div className="tbar-track"><div className="tbar-fill" style={{ width: `${((ic?.flip_risk ?? 0) * 100).toFixed(0)}%`, background: 'var(--lime)' }} /></div><span className="tbar-val">{(ic?.flip_risk ?? 0).toFixed(2)}</span></div>
                               <div className="tbar-row"><span className="tbar-name">Cluster</span><div className="tbar-track"><div className="tbar-fill" style={{ width: `${((ic?.cluster_risk ?? 0) * 100).toFixed(0)}%`, background: 'var(--lime)' }} /></div><span className="tbar-val">{(ic?.cluster_risk ?? 0).toFixed(2)}</span></div>
-                            </div>
-                          </div>
-                        )
-                      })()}
-                      {(() => {
-                        const cq = analysisResult.conf_res?.data_quality ?? 0
-                        const cv = analysisResult.conf_res?.conviction_score ?? 0
-                        const confCls = trustClass(cq * 100)
-                        const cAns = analysisResult.conf_res?.confidence_level ?? ''
-                        const cDesc = `Data quality ${(cq * 100).toFixed(0)}%, Conviction ${(cv * 100).toFixed(0)}%`
-                        return (
-                          <div className={`tile ${confCls}`} id="tile3">
-                            <div className="tile-icon">🎯</div>
-                            <div className="tile-q">How sure is the signal?</div>
-                            <div className={`tile-answer ${confCls}`} id="t3ans">{cAns}</div>
-                            <div className="tile-desc" id="t3desc">{cDesc}</div>
-                            <div className="tile-bars">
-                              <div className="tbar-row"><span className="tbar-name">Quality</span><div className="tbar-track"><div className="tbar-fill" style={{ width: `${(cq * 100).toFixed(0)}%`, background: 'var(--lime)' }} /></div><span className="tbar-val">{(cq * 100).toFixed(0)}%</span></div>
-                              <div className="tbar-row"><span className="tbar-name">Conviction</span><div className="tbar-track"><div className="tbar-fill" style={{ width: `${(cv * 100).toFixed(0)}%`, background: 'var(--purple)' }} /></div><span className="tbar-val">{(cv * 100).toFixed(0)}%</span></div>
                             </div>
                           </div>
                         )
