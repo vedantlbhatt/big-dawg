@@ -9,6 +9,10 @@ export interface Market {
   classification?: string | null
   yes_vol?: number
   no_vol?: number
+  wallet_score?: number
+  integrity_score?: number
+  info_score?: number
+  conf_score?: number
 }
 
 export interface IntegrityResult {
@@ -24,6 +28,7 @@ export interface IntegrityResult {
 }
 
 export interface InformationResult {
+  score: number
   classification: string
   components: {
     informed_score: number
@@ -75,7 +80,7 @@ export interface AnalysisResult {
     market_stats?: { total_trades?: number; unique_wallets?: number; latest_price?: number }
     overall_score: number
     verdict: string
-    wallet_intelligence?: { star_count?: number; aggregate_star_capital?: number; stars?: unknown[] }
+    wallet_intelligence?: { score?: number; star_count?: number; aggregate_star_capital?: number; stars?: unknown[] }
   }
   recommendation?: Recommendation
   wallet_intel?: WalletIntel

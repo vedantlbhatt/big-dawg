@@ -13,6 +13,54 @@ function trustClass(score: number): 'trust' | 'caution' | 'risk' {
   return 'risk'
 }
 
+const RadarChartSVG = ({ scores, size = 60 }: { scores: { wallet: number; integrity: number; info: number; conf: number }; size?: number }) => {
+  const center = size / 2;
+  const radius = (size / 2) - 12;
+
+  // Axes: 0: Top (Wallet), 1: Right (Integrity), 2: Bottom (Info), 3: Left (Quality)
+  const points = [
+    { x: center, y: center - radius * (scores.wallet || 0) },
+    { x: center + radius * (scores.integrity || 0), y: center },
+    { x: center, y: center + radius * (scores.info || 0) },
+    { x: center - radius * (scores.conf || 0), y: center },
+  ];
+
+  const polygonPoints = points.map(p => `${p.x},${p.y}`).join(' ');
+  const labelDist = radius + 6;
+  const labels = [
+    { text: 'Wal', x: center, y: center - labelDist },
+    { text: 'Int', x: center + labelDist + 4, y: center + 3 },
+    { text: 'Inf', x: center, y: center + labelDist + 6 },
+    { text: 'Qual', x: center - labelDist - 4, y: center + 3 }
+  ];
+
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ overflow: 'visible' }}>
+      {/* Background Grid */}
+      <circle cx={center} cy={center} r={radius} fill="none" stroke="var(--border2)" strokeWidth="0.5" strokeDasharray="2,2" />
+      <line x1={center} y1={center - radius} x2={center} y2={center + radius} stroke="var(--border2)" strokeWidth="0.5" strokeDasharray="1,1" />
+      <line x1={center - radius} y1={center} x2={center + radius} y2={center} stroke="var(--border2)" strokeWidth="0.5" strokeDasharray="1,1" />
+
+      {/* Radar Shape */}
+      <polygon
+        points={polygonPoints}
+        fill="rgba(185, 247, 81, 0.25)"
+        stroke="var(--lime)"
+        strokeWidth="2"
+        strokeLinejoin="round"
+      />
+      {/* Dots */}
+      {points.map((p, i) => (
+        <circle key={i} cx={p.x} cy={p.y} r="2.5" fill="var(--lime)" />
+      ))}
+      {/* Labels if size large */}
+      {size > 100 && labels.map((l, i) => (
+        <text key={i} x={l.x} y={l.y} textAnchor="middle" fontSize="7" fontWeight="900" fill="var(--text3)" style={{ textAnchor: 'middle', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{l.text}</text>
+      ))}
+    </svg>
+  );
+};
+
 function PriceChartSVG({ priceSeries, currentPct }: { priceSeries: { timestamp: string; price: number }[]; currentPct: number }) {
   const w = 600
   const h = 160
@@ -355,22 +403,33 @@ function App() {
                   <div className="verdict-mkt-emoji">🗳</div>
                   <div className="verdict-mkt-name" id="vName">{displayMarketName}</div>
                 </div>
-                <div className="trust-ring">
-                  <svg viewBox="0 0 148 148">
-                    <circle className="ring-bg" cx="74" cy="74" r="58" />
-                    <circle
-                      className={`ring-fill ${trustCls}`}
-                      id="ringFill"
-                      cx="74"
-                      cy="74"
-                      r="58"
-                      strokeDasharray={RING_CIRCUMFERENCE}
-                      strokeDashoffset={RING_CIRCUMFERENCE - (RING_CIRCUMFERENCE * trustScore) / 100}
-                    />
-                  </svg>
-                  <div className="ring-center">
-                    <div className={`ring-num ${trustCls}`} id="ringNum">{trustScore}</div>
-                    <div className="ring-word">Trust Score</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 40, justifyContent: 'center', marginBottom: 24 }}>
+                  <div className="trust-ring">
+                    <svg viewBox="0 0 148 148">
+                      <circle className="ring-bg" cx="74" cy="74" r="58" />
+                      <circle
+                        className={`ring-fill ${trustCls}`}
+                        id="ringFill"
+                        cx="74"
+                        cy="74"
+                        r="58"
+                        strokeDasharray={RING_CIRCUMFERENCE}
+                        strokeDashoffset={RING_CIRCUMFERENCE - (RING_CIRCUMFERENCE * trustScore) / 100}
+                      />
+                    </svg>
+                    <div className="ring-center">
+                      <div className={`ring-num ${trustCls}`} id="ringNum">{trustScore}</div>
+                      <div className="ring-word">Trust Score</div>
+                    </div>
+                  </div>
+
+                  <div className="radar-large">
+                    <RadarChartSVG size={160} scores={{
+                      wallet: analysisResult.master_res?.wallet_intelligence?.score || 0,
+                      integrity: analysisResult.integrity_res?.score || 0,
+                      info: analysisResult.info_res?.score || 0,
+                      conf: analysisResult.conf_res?.confidence_score || 0
+                    }} />
                   </div>
                 </div>
                 <div className="verdict-line" id="vLine">
