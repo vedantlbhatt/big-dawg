@@ -9,8 +9,8 @@ const API_BASE = import.meta.env.VITE_API_URL || ''
 const RING_CIRCUMFERENCE = 364.4
 
 function trustClass(score: number): 'trust' | 'caution' | 'risk' {
-  if (score >= 70) return 'trust'
-  if (score >= 50) return 'caution'
+  if (score >= 60) return 'trust'
+  if (score >= 40) return 'caution'
   return 'risk'
 }
 
@@ -366,13 +366,11 @@ function App() {
   const trustScore = Math.round((analysisResult?.master_res?.overall_score ?? analysisResult?.integrity_res?.score ?? 0) * 100)
   const trustCls = trustClass(trustScore)
   const yesPct = Math.round((analysisResult?.conf_res?.probability ?? 0) * 100)
-  const noPct = 100 - yesPct
 
   const totalV = (analysisResult?.yes_vol || 0) + (analysisResult?.no_vol || 0)
   const sentimentYesPct = totalV > 0
-    ? Math.round((analysisResult?.yes_vol || 0) / totalV * 100)
-    : yesPct
-  const sentimentNoPct = 100 - sentimentYesPct
+    ? Math.round((analysisResult?.yes_vol || 0) / (totalV || 1) * 100)
+    : 50 // Balanced fallback if no volume data yet
   const rec = analysisResult?.recommendation
   const aiRecommendationText = rec
     ? `${rec.action}${rec.action === 'HOLD / NEUTRAL' ? ' — no strong edge yet.' : ''}`
@@ -585,7 +583,7 @@ function App() {
                   <div style={{ position: 'absolute', top: -14, left: 0, width: '100%', textAlign: 'center', fontSize: 9, fontWeight: 800, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '.08em' }}>Volume Sentiment (Trade Weighting)</div>
                   <div className="prob-block"><div className="prob-pct yes" id="vYes">{yesPct}%</div><div className="prob-out">YES</div></div>
                   <div className="prob-sep" /><div className="prob-vs">vs</div><div className="prob-sep" />
-                  <div className="prob-block"><div className="prob-pct no" id="vNo">{noPct}%</div><div className="prob-out">NO</div></div>
+                  <div className="prob-block"><div className="prob-pct no" id="vNo">{100 - sentimentYesPct}%</div><div className="prob-out">NO</div></div>
                 </div>
               </div>
 
