@@ -176,6 +176,8 @@ def get_markets(limit: int = 200):
             "integrity_status": scout['integrity_status'] if scout is not None else None,
             "classification": scout['classification'] if scout is not None else None,
         })
+    # Sort by trust_score descending (None -> 0)
+    rows.sort(key=lambda x: x["trust_score"] or 0, reverse=True)
     return rows
 
 
@@ -211,14 +213,28 @@ def analyze_market(req: AnalyzeRequest):
     integrity_res = master_res["integrity"]
     info_res = master_res["information"]
     conf_res = confidence_metrics(trades_df, price_series, integrity_score=integrity_res.get("score"))
-    recommendation = get_recommendation(integrity_res, info_res, conf_res)
-    wallet_intel = _build_wallet_intel_for_ui(wallet_summary)
-    # Market name: use slug from first row or target
+    # Resolve Market Name first
     try:
-        first_slug = trades_df["slug"].iloc[0] if "slug" in trades_df.columns and len(trades_df) else None
-        market_name = str(first_slug) if first_slug else target
+        if not trades_df.empty and "slug" in trades_df.columns:
+            first_slug = trades_df["slug"].iloc[0]
+            market_name = str(first_slug) if first_slug else target
+        else:
+            market_name = target
     except Exception:
         market_name = target
+
+    # Feedback Loop: Update the scout database so the card Trust Score matches this live analysis
+    from utils.data_loader import save_scout_result
+    save_scout_result(
+        target,
+        master_res.get("overall_score", 0),
+        integrity_res.get("status", ""),
+        info_res.get("classification", ""),
+        event_title=market_name
+    )
+
+    recommendation = get_recommendation(integrity_res, info_res, conf_res)
+    wallet_intel = _build_wallet_intel_for_ui(wallet_summary)
     # Price series for chart
     price_list = []
     for ts, val in price_series.items():
