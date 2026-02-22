@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { fetchMarkets, analyzeMarket, cancelMarketsFetch, chat as apiChat } from './api'
+import LandingPage from './LandingPage'
 import type { Market, AnalysisResult, PredictiveInsights } from './types'
 
 type Page = 'landing' | 'markets' | 'analysis'
@@ -393,17 +394,7 @@ function App() {
 
       {/* LANDING */}
       <div className={`page ${page === 'landing' ? 'on' : ''}`} id="landingPage">
-        <span className="land-paw"><img src="/reddog.png" alt="" /></span>
-        <div className="land-title">Can you <em>trust</em><br />that bet?</div>
-        <div className="land-sub">Big-Dawg reads the signal behind every prediction market — so you know when to bet, and when to walk.</div>
-        <button type="button" className="land-cta" onClick={enterApp}>Browse Markets →</button>
-        <div className="land-stats">
-          <div className="lstat"><div className="lstat-val">{stats?.volume_tracked ?? '---'}</div><div className="lstat-lab">Volume Tracked</div></div>
-          <div style={{ width: 1, background: 'var(--border2)' }} />
-          <div className="lstat"><div className="lstat-val">{stats?.live_markets ?? '---'}</div><div className="lstat-lab">Live Markets</div></div>
-          <div style={{ width: 1, background: 'var(--border2)' }} />
-          <div className="lstat"><div className="lstat-val">{stats?.avg_analysis_time ?? '---'}</div><div className="lstat-lab">Avg Analysis</div></div>
-        </div>
+        <LandingPage onBrowseMarkets={enterApp} stats={stats} />
       </div>
 
       {/* MARKETS — real from API (Polymarket + logic engine) or mock */}

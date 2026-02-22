@@ -152,7 +152,7 @@ def get_global_stats():
         
         # Get real average analysis time from tracker
         avg_time_ms = analysis_timer.get_average()
-        avg_time_str = format_time_stat(avg_time_ms) if avg_time_ms > 0 else "48ms"
+        avg_time_str = format_time_stat(avg_time_ms) if avg_time_ms > 0 else "<200ms"
         
         return {
             "volume_tracked": f"${total_vol/1e9:.1f}B" if total_vol > 1e9 else f"${total_vol/1e6:.1f}M",
