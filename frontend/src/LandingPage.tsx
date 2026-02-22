@@ -910,8 +910,8 @@ export default function LandingPage({
 
       <section id="s0">
         <span className="land-paw">🐾</span>
-        <div className="land-title">Can you <em>trust</em><br />that bet?</div>
-        <div className="land-sub">We collect, analyze, and gather the data needed to simplify participating in a prediction market by identifying the highest performing wallets and analyzing their actions. Big-Dawg reads the signal behind every prediction market — so you know when to bet, and when to walk.</div>
+        <div className="land-title">Follow the <em>trust</em><br />that bet?</div>
+        <div className="land-sub">We analyze prediction market trades with statistical models to identify high-performing wallets, detect manipulation, and extract real predictive signals, simplifying the noise so you know when to lean in and when to walk away.</div>
         <button type="button" className="land-cta" onClick={onBrowseMarkets}>Browse Markets →</button>
         <div className="land-stats">
           <div className="lstat"><div className="lstat-val">{volumeDisplay}</div><div className="lstat-lab">Volume Tracked</div></div>
@@ -931,7 +931,9 @@ export default function LandingPage({
           <div className="intro-left reveal">
             <div className="eyebrow">How it works</div>
             <div className="intro-headline">We follow the <em>money</em>,<br />so you don&apos;t have to.</div>
-            <div className="intro-body">Every market has a number. But behind it are real wallets making real bets. Big-Dawg tracks the biggest players, figures out what they believe, and tells you if the crowd or the smart money is winning.</div>
+            <div className="intro-body">Option 1 (clean + smooth)
+Every market has a number. Behind it are real wallets making real bets. We track the biggest dawgs — the traders with the strongest historical performance — decode what they believe, and turn it into clear, actionable insights.</div>
+
           </div>
           <div className="signal-path reveal">
             {[
@@ -1001,7 +1003,7 @@ export default function LandingPage({
       <section id="s2">
         <div className="eyebrow reveal">Step 2 of 5</div>
         <div className="step-headline reveal">We build a <em>wallet index</em>.</div>
-        <div className="step-body reveal">Every wallet that touched this market gets profiled. We pull their full trading history across all markets — win rate, ROI, volume, consistency. This is how we separate the sharps from the noise before we weight anyone&apos;s position.</div>
+        <div className="step-body reveal">Every wallet that touched a given market gets profiled. We pull their full trading history across all markets: win rate, ROI, volume, consistency. This is how we separate the top-performers from the noise before we weight anyone&apos;s position.</div>
         <div className="dossier-grid reveal">
           {DOSSIER_WALLETS.map((w, i) => {
             const tierMap: Record<string, { label: string; cls: string }> = { sharp: { label: "Sharp", cls: "tier-sharp" }, casual: { label: "Casual", cls: "tier-casual" }, noise: { label: "Noise", cls: "tier-noise" } };
@@ -1041,7 +1043,7 @@ export default function LandingPage({
         <div className="step-headline reveal">We find the <em>winners</em>.</div>
         <div className="step-body reveal">We identify the users/wallets involved in the current market that historically have the highest 
           perfomance, looking at metrics like average ROI, volume, and experience. <br></br> <br></br>Users that pass a certain threshold
-           of success are deemed "Smart Wallets". These are the actions we want to pay close attention to in order to mimic!</div>
+           of success are deemed "Smart Wallets". These are the BIG DAWGS we want to pay close attention to in order to mimic!</div>
 
         <div className="reveal" style={{ width: "100%", display: "flex", justifyContent: "center" }}>
           <BarChart />
@@ -1062,7 +1064,7 @@ export default function LandingPage({
         <div className="s4-bg-lime" /><div className="s4-bg-red" />
         <div className="eyebrow reveal">Step 4 of 5</div>
         <div className="step-headline reveal">We check where <em>smart wallets</em> stands.</div>
-        <div className="step-body reveal">Top 5 wallets by size. Count YES vs NO. Their average entry price becomes the lean percentage.</div>
+        <div className="step-body reveal">We analyze the threshold-passing top/smart wallets and see their stances on a given market. Their average entry price becomes the lean percentage.</div>
         <div className="gauge-wrap reveal">
           <div className="gauge-card">
             <div className="gauge-svg-wrap">
@@ -1093,9 +1095,9 @@ export default function LandingPage({
         <Starfield count={70} />
         <div className="eyebrow reveal">Step 5 of 5</div>
         <div className="step-headline reveal">We measure how much they <em>agree</em>.</div>
-        <div className="step-body reveal">We measure the converence of these smart wallets in the current market. Tight cluster = clean signal. Wide spread = contested. The constellation shows where each wallet stands.</div>
+        <div className="step-body reveal">We measure the converence of these smart wallets in the current market. If these smart wallets tend to converge on similar trades, we can take similar actions. <br></br> <br></br>Otherwise, we know to be wary and to take into account other information before making a decision.</div>
         <div className="constellation-wrap reveal">
-          <div className="constellation-label">Wallet belief distribution (% YES)</div>
+          <div className="constellation-label">Smart Wallet belief distribution (% YES)</div>
           <ConstellationSVG />
           <div className="div-levels">
             <div className="div-lvl lo"><div className="div-lvl-n">Low spread</div><div className="div-lvl-d">Cluster together. Signal is clean.</div></div>
@@ -1110,7 +1112,7 @@ export default function LandingPage({
       </section>
 
       <section id="s-final">
-        <div className="final-title reveal">Now you know.<br />Trust the <em>signal</em>.</div>
+        <div className="final-title reveal">Now you know.<br />Follow the <em>big dawgs.</em></div>
         <div className="final-sub reveal">Pick a market, run the analysis, see exactly where smart money stands.</div>
         <button type="button" className="land-cta reveal" onClick={onBrowseMarkets}>Browse Markets →</button>
       </section>
