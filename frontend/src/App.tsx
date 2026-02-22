@@ -101,6 +101,7 @@ function App() {
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedMarket, setSelectedMarket] = useState<Market | null>(null)
   const [showInfoCard, setShowInfoCard] = useState(false)
+  const [visibleCount, setVisibleCount] = useState(20)
   const replyIdx = useRef(0)
 
   // Fetch global stats on mount
@@ -119,6 +120,7 @@ function App() {
     fetchMarkets(searchQuery || undefined)
       .then((list) => {
         setApiMarkets(list)
+        setVisibleCount(20) // Reset pagination on search/refresh
         setMarketsError(null)
       })
       .catch((e) => {
@@ -271,8 +273,8 @@ function App() {
             />
           </div>
         )}
-        <div className="bets-grid" style={{ padding: '0 28px 60px' }} id="marketsGrid">
-          {apiMarkets.map((m) => (
+        <div className="bets-grid" style={{ padding: '0 28px 20px' }} id="marketsGrid">
+          {apiMarkets.slice(0, visibleCount).map((m) => (
             <div
               key={m.conditionId + m.slug}
               className="bet-card"
@@ -318,6 +320,18 @@ function App() {
             </div>
           ))}
         </div>
+
+        {apiMarkets.length > visibleCount && (
+          <div style={{ display: 'flex', justifyContent: 'center', padding: '0 0 60px' }}>
+            <button
+              className="land-cta"
+              onClick={() => setVisibleCount(prev => prev + 20)}
+              style={{ padding: '12px 32px', fontSize: 14 }}
+            >
+              See More Markets ↓
+            </button>
+          </div>
+        )}
       </div>
 
       {/* ANALYSIS */}

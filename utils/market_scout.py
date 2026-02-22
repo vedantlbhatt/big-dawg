@@ -4,7 +4,8 @@ from utils.market_loader import fetch_markets
 from integrity_engine.integrity_score import integrity_score
 from information_engine.information import classify_market_behavior
 from confidence_layer.confidence import confidence_metrics
-from utils.data_loader import save_scout_result, init_scout_db
+from utils.data_loader import save_scout_result, init_scout_db, get_wallet_analysis
+from utils.logic_engine import master_logic_engine
 import time
 
 def scout_markets(limit=10):
@@ -35,38 +36,38 @@ def scout_markets(limit=10):
                 if trades_df.empty:
                     continue
                 
+                # Calculate YES/NO Volumes on FULL history BEFORE tailing
+                trades_df['outcome_norm'] = trades_df['outcome'].astype(str).str.strip().str.upper()
+                yes_vol = float(trades_df[trades_df['outcome_norm'].isin(['YES', 'PURCHASE YES'])]['size'].sum())
+                no_vol = float(trades_df[trades_df['outcome_norm'].isin(['NO', 'PURCHASE NO'])]['size'].sum())
+
                 # Align window to 2000 for parity (matches Dashboard depth usually)
                 trades_df = trades_df.tail(2000)
                 price_series = trades_df.set_index("timestamp")["price"].resample("5min").last().ffill()
                 
-                wallet_summary = trades_df.groupby("wallet").agg(
-                    total_volume=("size", "sum"),
-                    total_trades=("size", "count"),
-                ).reset_index()
+                wallet_summary = get_wallet_analysis(trades_df)
             
-            # Run engines
-            integrity_res = integrity_score(wallet_summary, trades_df)
-            info_res = classify_market_behavior(trades_df, price_series)
-            conf_res = confidence_metrics(trades_df, price_series)
-            
-            # Opportunity Score Logic:
-            # We use a weighted model to rank markets:
-            # 30% Volume (Liquidity/Slippage)
-            # 30% Health (Low manipulation risk)
-            # 20% Informed Activity (Edge detection)
-            # 20% Confidence (Price stability)
-            volume_norm = min(row['volume'] / 1000000, 1) 
-            health = integrity_res['score']
-            is_informed = 1 if "Informed" in info_res['classification'] else 0.5
-            confidence = conf_res['confidence_score']
-            
-            opportunity_score = (volume_norm * 0.3) + (health * 0.3) + (is_informed * 0.2) + (confidence * 0.2)
+            # 3. Master Logic Engine (Single Source of Truth)
+            if wallet_summary is None or wallet_summary.empty:
+                wallet_summary = get_wallet_analysis(trades_df)
+                
+            master_res = master_logic_engine(trades_df, price_series, wallet_summary)
+            opportunity_score = master_res.get("overall_score", 0)
+
+            # 4. Calculate YES/NO Volumes (Already done above if standard fetch, but handle parity case)
+            if 'yes_vol' not in locals():
+                trades_df['outcome_norm'] = trades_df['outcome'].astype(str).str.strip().str.upper()
+                yes_vol = float(trades_df[trades_df['outcome_norm'].isin(['YES', 'PURCHASE YES'])]['size'].sum())
+                no_vol = float(trades_df[trades_df['outcome_norm'].isin(['NO', 'PURCHASE NO'])]['size'].sum())
             
             save_scout_result(
                 slug, 
                 round(opportunity_score, 3), 
-                integrity_res['status'], 
-                info_res['classification']
+                master_res["integrity"]["status"], 
+                master_res["information"]["classification"],
+                event_title=row.get('event_title'),
+                yes_val=yes_vol,
+                no_val=no_vol
             )
             scanned_count += 1
             

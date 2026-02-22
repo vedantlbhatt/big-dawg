@@ -163,7 +163,7 @@ def get_markets(limit: int = 200, query: str = None):
         if os.path.exists("data/scout.sqlite"):
             import sqlite3
             conn = sqlite3.connect("data/scout.sqlite")
-            sdf = pd.read_sql_query("SELECT slug, opportunity_score, integrity_status, classification FROM market_scores", conn)
+            sdf = pd.read_sql_query("SELECT slug, opportunity_score, integrity_status, classification, yes_val, no_val FROM market_scores", conn)
             conn.close()
             for _, r in sdf.iterrows():
                 scout_data[r['slug']] = r
@@ -186,6 +186,8 @@ def get_markets(limit: int = 200, query: str = None):
             "trust_score": int(scout['opportunity_score'] * 100) if scout is not None else None,
             "integrity_status": scout['integrity_status'] if scout is not None else None,
             "classification": scout['classification'] if scout is not None else None,
+            "yes_vol": scout['yes_val'] if scout is not None else 0,
+            "no_vol": scout['no_val'] if scout is not None else 0,
         })
     # Sort by trust_score descending (None -> 0)
     rows.sort(key=lambda x: x["trust_score"] or 0, reverse=True)
@@ -235,13 +237,20 @@ def analyze_market(req: AnalyzeRequest):
         market_name = target
 
     # Feedback Loop: Update the scout database so the card Trust Score matches this live analysis
+    # Calculate YES/NO Volumes for the feedback loop
+    trades_df['outcome_norm'] = trades_df['outcome'].astype(str).str.strip().str.upper()
+    yes_vol = float(trades_df[trades_df['outcome_norm'].isin(['YES', 'PURCHASE YES'])]['size'].sum())
+    no_vol = float(trades_df[trades_df['outcome_norm'].isin(['NO', 'PURCHASE NO'])]['size'].sum())
+
     from utils.data_loader import save_scout_result
     save_scout_result(
         target,
         master_res.get("overall_score", 0),
         integrity_res.get("status", ""),
         info_res.get("classification", ""),
-        event_title=market_name
+        event_title=market_name,
+        yes_val=yes_vol,
+        no_val=no_vol
     )
 
     recommendation = get_recommendation(integrity_res, info_res, conf_res)
