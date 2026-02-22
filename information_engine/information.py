@@ -29,17 +29,27 @@ def classify_market_behavior(trades, price_series, wallet_summary=None):
     retail_score = min((momentum + reaction) / 2, 1)
     whale_score = whale
 
-    # Classify with thresholds
-    if informed_score > 0.4 and informed_score > retail_score and informed_score > whale_score:
+    # Classify with minimum thresholds so weak signals don't over-label markets
+    informed_threshold = 0.6
+    whale_threshold = 0.6
+    retail_threshold = 0.5
+
+    if (
+        informed_score > retail_score
+        and informed_score > whale_score
+        and informed_score >= informed_threshold
+    ):
         classification = "🧠 Likely Informed Activity"
-    elif whale_score > 0.4 and whale_score > informed_score and whale_score > retail_score:
+    elif (
+        whale_score > informed_score
+        and whale_score > retail_score
+        and whale_score >= whale_threshold
+    ):
         classification = "🎭 Whale Dominance"
-    elif retail_score > 0.3:
+    elif retail_score >= retail_threshold:
         classification = "📈 Retail Momentum"
-    elif abs(informed_score - retail_score) < 0.1 and informed_score > 0.2:
-        classification = "⚖️ Balanced Participation"
     else:
-        classification = "🌫️ Noise / Low Activity"
+        classification = "🔎 Mixed / Noise"
 
     return {
         "classification": classification,
