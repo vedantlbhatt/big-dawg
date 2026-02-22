@@ -407,9 +407,9 @@ function App() {
                             {walletIntel.lean === 'split' && 'Smart money is split'}
                           </div>
                           <div className="wi-sub" id="wiSub">
-                            {walletIntel.lean === 'yes' && `${walletIntel.wallets.filter((x) => x.side === 'yes').length} of ${walletIntel.wallets.length} top wallets are on YES. They usually know.`}
-                            {walletIntel.lean === 'no' && `${walletIntel.wallets.filter((x) => x.side === 'no').length} of ${walletIntel.wallets.length} top wallets are on NO. Worth noting.`}
-                            {walletIntel.lean === 'split' && 'Top wallets are divided. No clear edge from the smart crowd.'}
+                            {walletIntel.lean === 'yes' && 'Top financial stakeholders are positioning for YES.'}
+                            {walletIntel.lean === 'no' && 'Top financial stakeholders are positioning for NO.'}
+                            {walletIntel.lean === 'split' && 'No consensus among the largest market participants.'}
                           </div>
                         </div>
                         <div className={`wi-lean-badge ${walletIntel.lean}`} id="wiLeanBadge">
