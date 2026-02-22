@@ -3,32 +3,42 @@ import pandas as pd
 
 MARKETS_URL = "https://gamma-api.polymarket.com/markets"
 
-def fetch_markets(limit=10):
-    params = {
-        "active": True,
-        "closed": False,
-        "limit": limit
-    }
+def fetch_markets(limit=10, query=None):
+    all_markets = []
+    offset = 0
+    batch_size = 500  # Max per request
 
-    response = requests.get(MARKETS_URL, params=params)
-    data = response.json()
+    while len(all_markets) < limit:
+        params = {
+            "active": True,
+            "closed": False,
+            "limit": min(batch_size, limit - len(all_markets)),
+            "offset": offset
+        }
 
-    markets = []
+        response = requests.get(MARKETS_URL, params=params)
+        data = response.json()
 
-    for m in data:
-        # Get the event title for grouping
-        events = m.get("events", [])
-        event_title = events[0].get("title") if events else m.get("question")
-        
-        markets.append({
-            "event_title": event_title,
-            "question": m.get("question"),
-            "slug": m.get("slug"),
-            "volume": float(m.get("volume", 0)),
-            "conditionId": m.get("conditionId")
-        })
+        if not data:
+            break
 
-    df = pd.DataFrame(markets)
+        for m in data:
+            events = m.get("events", [])
+            event_title = events[0].get("title") if events else m.get("question")
+            
+            all_markets.append({
+                "event_title": event_title,
+                "question": m.get("question"),
+                "slug": m.get("slug"),
+                "volume": float(m.get("volume", 0)),
+                "conditionId": m.get("conditionId")
+            })
+
+        offset += len(data)
+        if len(data) < batch_size:
+            break
+
+    df = pd.DataFrame(all_markets[:limit])
     df = df.sort_values("volume", ascending=False)
 
     return df

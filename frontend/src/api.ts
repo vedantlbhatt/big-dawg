@@ -2,11 +2,12 @@ import type { Market, AnalysisResult } from './types'
 
 const API_BASE = import.meta.env.VITE_API_URL || ''
 
-export async function fetchMarkets(): Promise<Market[]> {
+export async function fetchMarkets(query?: string): Promise<Market[]> {
   if (!API_BASE) {
     return []
   }
-  const res = await fetch(`${API_BASE}/api/markets`)
+  const url = query ? `${API_BASE}/api/markets?query=${encodeURIComponent(query)}` : `${API_BASE}/api/markets`
+  const res = await fetch(url)
   if (!res.ok) throw new Error('Failed to fetch markets')
   return res.json()
 }

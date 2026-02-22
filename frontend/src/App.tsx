@@ -98,6 +98,9 @@ function App() {
   const [tradesOpen, setTradesOpen] = useState(false)
   const [chatMessages, setChatMessages] = useState<{ role: 'user' | 'bot'; text: string }[]>([])
   const [chatInput, setChatInput] = useState('')
+  const [searchQuery, setSearchQuery] = useState('')
+  const [selectedMarket, setSelectedMarket] = useState<Market | null>(null)
+  const [showInfoCard, setShowInfoCard] = useState(false)
   const replyIdx = useRef(0)
 
   // Fetch global stats on mount
@@ -113,7 +116,7 @@ function App() {
     if (!API_BASE || page !== 'markets') return
     setMarketsLoading(true)
     setMarketsError(null)
-    fetchMarkets()
+    fetchMarkets(searchQuery || undefined)
       .then((list) => {
         setApiMarkets(list)
         setMarketsError(null)
@@ -123,7 +126,7 @@ function App() {
         setMarketsError(e instanceof Error ? e.message : 'Failed to load markets')
       })
       .finally(() => setMarketsLoading(false))
-  }, [API_BASE, page])
+  }, [API_BASE, page, searchQuery])
 
   const go = (p: Page) => {
     setOverlayOn(true)
@@ -141,12 +144,13 @@ function App() {
   const handleAnalyzeMarket = async (m: Market) => {
     setAnalysisError(null)
     setAnalyzing(true)
+    setSelectedMarket(m)
+    setShowInfoCard(true)
     try {
       const result = await analyzeMarket(m.slug || m.conditionId)
       setAnalysisResult(result)
       setChatMessages([])
       replyIdx.current = 0
-      go('analysis')
     } catch (e) {
       setAnalysisError(e instanceof Error ? e.message : 'Analysis failed')
     } finally {
@@ -247,6 +251,25 @@ function App() {
         )}
         {analyzing && (
           <div style={{ padding: '12px 28px', color: 'var(--text2)', fontSize: 14 }}>Running logic engine (integrity, information, confidence)…</div>
+        )}
+        {apiMarkets.length > 0 && (
+          <div style={{ padding: '12px 28px', marginBottom: 8 }}>
+            <input
+              type="text"
+              placeholder="Search events..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '8px 12px',
+                border: '1px solid var(--border)',
+                borderRadius: 8,
+                background: 'var(--bg)',
+                color: 'var(--text)',
+                fontSize: 14
+              }}
+            />
+          </div>
         )}
         <div className="bets-grid" style={{ padding: '0 28px 60px' }} id="marketsGrid">
           {apiMarkets.map((m) => (
@@ -407,9 +430,9 @@ function App() {
                             {walletIntel.lean === 'split' && 'Smart money is split'}
                           </div>
                           <div className="wi-sub" id="wiSub">
-                            {walletIntel.lean === 'yes' && `${walletIntel.wallets.filter((x) => x.side === 'yes').length} of ${walletIntel.wallets.length} top wallets are on YES. They usually know.`}
-                            {walletIntel.lean === 'no' && `${walletIntel.wallets.filter((x) => x.side === 'no').length} of ${walletIntel.wallets.length} top wallets are on NO. Worth noting.`}
-                            {walletIntel.lean === 'split' && 'Top wallets are divided. No clear edge from the smart crowd.'}
+                            {walletIntel.lean === 'yes' && 'Top financial stakeholders are positioning for YES.'}
+                            {walletIntel.lean === 'no' && 'Top financial stakeholders are positioning for NO.'}
+                            {walletIntel.lean === 'split' && 'No consensus among the largest market participants.'}
                           </div>
                         </div>
                         <div className={`wi-lean-badge ${walletIntel.lean}`} id="wiLeanBadge">
@@ -544,6 +567,99 @@ function App() {
           )}
         </div>
       </div >
+
+      {/* INFO CARD MODAL */}
+      {showInfoCard && selectedMarket && (
+        <div className="modal-overlay" onClick={() => setShowInfoCard(false)} style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ background: 'var(--bg)', borderRadius: 12, padding: 24, maxWidth: 600, width: '90%', maxHeight: '80vh', overflowY: 'auto' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <h2 style={{ margin: 0, color: 'var(--text)' }}>{selectedMarket.question}</h2>
+              <button onClick={() => setShowInfoCard(false)} style={{ background: 'none', border: 'none', fontSize: 24, cursor: 'pointer', color: 'var(--text2)' }}>×</button>
+            </div>
+            {analyzing ? (
+              <div style={{ textAlign: 'center', padding: 40 }}>Running analysis...</div>
+            ) : analysisResult ? (
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 24 }}>
+                  <div className="trust-ring" style={{ width: 80, height: 80 }}>
+                    <svg viewBox="0 0 148 148" style={{ width: '100%', height: '100%' }}>
+                      <circle className="ring-bg" cx="74" cy="74" r="58" />
+                      <circle
+                        className={`ring-fill ${trustCls}`}
+                        cx="74"
+                        cy="74"
+                        r="58"
+                        strokeDasharray={RING_CIRCUMFERENCE}
+                        strokeDashoffset={RING_CIRCUMFERENCE - (RING_CIRCUMFERENCE * trustScore) / 100}
+                      />
+                    </svg>
+                    <div className="ring-center" style={{ width: 60, height: 60, top: 10, left: 10 }}>
+                      <div className={`ring-num ${trustCls}`} style={{ fontSize: 16 }}>{trustScore}</div>
+                      <div className="ring-word" style={{ fontSize: 8 }}>Trust</div>
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--text)' }}>{analysisResult.master_res?.verdict ?? 'Neutral'}</div>
+                    <div style={{ color: 'var(--text2)', fontSize: 14 }}>{rec?.reasoning ?? analysisResult.integrity_res?.status ?? ''}</div>
+                  </div>
+                </div>
+                <div className="tiles-row" style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                  {/* Integrity Tile */}
+                  {(() => {
+                    const ic = analysisResult.integrity_res?.components
+                    const iCls = analysisResult.integrity_res?.score && analysisResult.integrity_res.score < 0.3 ? 'bad' : analysisResult.integrity_res?.score && analysisResult.integrity_res.score < 0.6 ? 'ok' : 'good'
+                    const iAns = analysisResult.integrity_res?.status ?? ''
+                    const iDesc = `Score ${(analysisResult.integrity_res?.score ?? 0) * 100}%`
+                    return (
+                      <div className={`tile ${iCls}`} style={{ flex: 1, minWidth: 200 }}>
+                        <div className="tile-icon">🛡️</div>
+                        <div className="tile-q">Market Health</div>
+                        <div className={`tile-answer ${iCls}`}>{iAns}</div>
+                        <div className="tile-desc">{iDesc}</div>
+                      </div>
+                    )
+                  })()}
+                  {/* Information Tile */}
+                  {(() => {
+                    const inf = analysisResult.info_res?.components
+                    const infCls = inf && (inf.informed_score ?? 0) > 0.5 ? 'good' : (inf?.whale_score ?? 0) > 0.4 ? 'ok' : 'bad'
+                    const sAns = analysisResult.info_res?.classification ?? ''
+                    const sDesc = `Informed ${(inf?.informed_score ?? 0) * 100}%, Whale ${(inf?.whale_score ?? 0) * 100}%`
+                    return (
+                      <div className={`tile ${infCls}`} style={{ flex: 1, minWidth: 200 }}>
+                        <div className="tile-icon">🧠</div>
+                        <div className="tile-q">Who's Trading?</div>
+                        <div className={`tile-answer ${infCls}`}>{sAns}</div>
+                        <div className="tile-desc">{sDesc}</div>
+                      </div>
+                    )
+                  })()}
+                  {/* Confidence Tile */}
+                  {(() => {
+                    const cq = analysisResult.conf_res?.data_quality ?? 0
+                    const confCls = trustClass(cq * 100)
+                    const cAns = analysisResult.conf_res?.confidence_level ?? ''
+                    const cDesc = `Quality ${(cq * 100).toFixed(0)}%`
+                    return (
+                      <div className={`tile ${confCls}`} style={{ flex: 1, minWidth: 200 }}>
+                        <div className="tile-icon">🎯</div>
+                        <div className="tile-q">Signal Strength</div>
+                        <div className={`tile-answer ${confCls}`}>{cAns}</div>
+                        <div className="tile-desc">{cDesc}</div>
+                      </div>
+                    )
+                  })()}
+                </div>
+                <div style={{ marginTop: 24, textAlign: 'center' }}>
+                  <button onClick={() => { setShowInfoCard(false); go('analysis'); }} style={{ padding: '8px 16px', background: 'var(--lime)', color: 'var(--bg)', border: 'none', borderRadius: 8, cursor: 'pointer' }}>View Full Analysis</button>
+                </div>
+              </div>
+            ) : (
+              <div style={{ textAlign: 'center', padding: 40 }}>No analysis available.</div>
+            )}
+          </div>
+        </div>
+      )}
     </>
   )
 }

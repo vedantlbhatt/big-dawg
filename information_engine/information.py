@@ -24,26 +24,38 @@ def classify_market_behavior(trades, price_series, wallet_summary=None):
         whale = whale_dominance_score(wallet_summary)
 
     # Weighted logic
+    # We increase the threshold for "Informed" to avoid over-reporting
     informed_score = early
-    retail_score = momentum + reaction
+    retail_score = min((momentum + reaction) / 2, 1)
     whale_score = whale
 
-    # Normalize retail
-    retail_score = min(retail_score / 2, 1)
+    # Classify with minimum thresholds so weak signals don't over-label markets
+    informed_threshold = 0.6
+    whale_threshold = 0.6
+    retail_threshold = 0.5
 
-    # Classify
-    if informed_score > retail_score and informed_score > whale_score:
+    if (
+        informed_score > retail_score
+        and informed_score > whale_score
+        and informed_score >= informed_threshold
+    ):
         classification = "🧠 Likely Informed Activity"
-    elif whale_score > informed_score and whale_score > retail_score:
+    elif (
+        whale_score > informed_score
+        and whale_score > retail_score
+        and whale_score >= whale_threshold
+    ):
         classification = "🎭 Whale Dominance"
-    else:
+    elif retail_score >= retail_threshold:
         classification = "📈 Retail Momentum"
+    else:
+        classification = "🔎 Mixed / Noise"
 
     return {
         "classification": classification,
         "components": {
-            "informed_score": round(informed_score, 3),
-            "retail_score": round(retail_score, 3),
-            "whale_score": round(whale_score, 3)
+            "informed_score": round(float(informed_score), 3),
+            "retail_score": round(float(retail_score), 3),
+            "whale_score": round(float(whale_score), 3)
         }
     }
