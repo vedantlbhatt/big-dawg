@@ -827,6 +827,20 @@ export default function LandingPage({
     return () => clearInterval(t);
   }, []);
 
+  // Keep counter increasing every so often after initial animation
+  useEffect(() => {
+    let interval: ReturnType<typeof setInterval> | null = null;
+    const start = setTimeout(() => {
+      interval = setInterval(() => {
+        setCounter(c => c + Math.floor(Math.random() * 3 + 1));
+      }, 1200);
+    }, 2600);
+    return () => {
+      clearTimeout(start);
+      if (interval) clearInterval(interval);
+    };
+  }, []);
+
   useEffect(() => {
     let i = 0;
     const t = setInterval(() => {
@@ -1006,7 +1020,9 @@ export default function LandingPage({
       <section id="s3">
         <div className="eyebrow reveal">Step 3 of 5</div>
         <div className="step-headline reveal">We find the <em>winners</em>.</div>
-        <div className="step-body reveal">ROI ≥ 15% with meaningful size earns a star. Stars carry more signal weight. Watch who crosses the line.</div>
+        <div className="step-body reveal">We identify the users/wallets involved in the current market that historically have the highest 
+          perfomance, looking at metrics like average ROI, volume, and experience. <br></br> <br></br>Users that pass a certain threshold
+           of success are deemed "Smart Wallets". These are the actions we want to pay close attention to in order to mimic!</div>
 
         <div className="reveal" style={{ width: "100%", display: "flex", justifyContent: "center" }}>
           <BarChart />
@@ -1026,7 +1042,7 @@ export default function LandingPage({
       <section id="s4">
         <div className="s4-bg-lime" /><div className="s4-bg-red" />
         <div className="eyebrow reveal">Step 4 of 5</div>
-        <div className="step-headline reveal">We check where <em>smart money</em> stands.</div>
+        <div className="step-headline reveal">We check where <em>smart wallets</em> stands.</div>
         <div className="step-body reveal">Top 5 wallets by size. Count YES vs NO. Their average entry price becomes the lean percentage.</div>
         <div className="gauge-wrap reveal">
           <div className="gauge-card">
